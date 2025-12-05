@@ -31,6 +31,7 @@ public:
     void setViewport(int x, int y, int width, int height) override;
     void setDepthTest(bool enabled) override;
     void setBlending(bool enabled) override;
+    void setWireframe(bool enabled) override;
 
     // Drawing
     void draw(VertexArray* vao, uint32_t vertexCount) override;

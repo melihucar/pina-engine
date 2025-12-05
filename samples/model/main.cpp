@@ -61,6 +61,7 @@ protected:
         std::cout << "  WASD - Move camera" << std::endl;
         std::cout << "  Right Mouse + Drag - Look around" << std::endl;
         std::cout << "  Space - Toggle rotation" << std::endl;
+        std::cout << "  Z - Toggle wireframe" << std::endl;
         std::cout << "  Escape - Quit" << std::endl;
         std::cout << "====================" << std::endl;
     }
@@ -96,6 +97,12 @@ protected:
         if (input->isKeyPressed(Pina::Key::Space)) {
             m_autoRotate = !m_autoRotate;
             std::cout << "Auto-rotation: " << (m_autoRotate ? "ON" : "OFF") << std::endl;
+        }
+
+        // Toggle wireframe mode
+        if (input->isKeyPressed(Pina::Key::Z)) {
+            m_wireframe = !m_wireframe;
+            std::cout << "Wireframe: " << (m_wireframe ? "ON" : "OFF") << std::endl;
         }
 
         // Camera movement
@@ -143,6 +150,10 @@ protected:
         m_lightManager.setViewPosition(m_cameraPos);
         m_lightManager.uploadToShader(m_shader.get());
 
+        // Apply wireframe mode if enabled
+        m_device->setWireframe(m_wireframe);
+        m_shader->setInt("uWireframe", m_wireframe ? 1 : 0);
+
         // Draw model
         if (m_model) {
             glm::mat4 model = glm::mat4(1.0f);
@@ -189,6 +200,9 @@ protected:
             m_shader->setMat3("uNormalMatrix", normalMatrix);
             m_floor->draw();
         }
+
+        // Reset to solid mode for UI rendering
+        m_device->setWireframe(false);
 
         m_device->endFrame();
     }
@@ -243,8 +257,9 @@ protected:
 
             Separator();
 
-            if (CollapsingHeader header("Animation", Pina::UITreeNodeFlags::DefaultOpen); header) {
+            if (CollapsingHeader header("Rendering", Pina::UITreeNodeFlags::DefaultOpen); header) {
                 Checkbox("[Space] Auto-Rotate", &m_autoRotate);
+                Checkbox("[Z] Wireframe", &m_wireframe);
             }
 
             Separator();
@@ -298,6 +313,9 @@ private:
     // Animation
     float m_autoRotation = 0.0f;
     bool m_autoRotate = false;
+
+    // Rendering modes
+    bool m_wireframe = false;
 
     // Model transform controls
     glm::vec3 m_modelPosition{0.0f};  // X, Y, Z position

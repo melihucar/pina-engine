@@ -71,6 +71,9 @@ public:
     /// Enable/disable blending
     virtual void setBlending(bool enabled) = 0;
 
+    /// Enable/disable wireframe rendering mode
+    virtual void setWireframe(bool enabled) = 0;
+
     // ========================================================================
     // Drawing
     // ========================================================================

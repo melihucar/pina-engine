@@ -189,6 +189,7 @@ uniform sampler2D uNormalMap;
 uniform bool uUseDiffuseMap;
 uniform bool uUseSpecularMap;
 uniform bool uUseNormalMap;
+uniform bool uWireframe;
 
 // ============================================================================
 // Inputs from vertex shader
@@ -264,6 +265,12 @@ vec3 calculateLight(Light light, vec3 normal, vec3 viewDir, vec3 fragPos,
 // ============================================================================
 
 void main() {
+    // Wireframe mode: output solid white
+    if (uWireframe) {
+        FragColor = vec4(1.0, 1.0, 1.0, 1.0);
+        return;
+    }
+
     // Normalize interpolated normal
     vec3 normal = normalize(vNormal);
 
