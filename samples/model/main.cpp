@@ -38,6 +38,8 @@ protected:
             // Calculate auto-fit scale and center offset
             m_modelScale = m_model->calculateFitScale(2.0f);  // Fit within 2 units
             m_modelCenter = m_model->getCenter();
+            // Calculate Y offset to place model on floor (based on bounding box min Y after scaling)
+            m_modelBaseY = -m_model->getBoundingBox().min.y * m_modelScale;
             std::cout << "Model bounds: " << m_model->getSize().x << " x "
                       << m_model->getSize().y << " x " << m_model->getSize().z << std::endl;
             std::cout << "Auto-fit scale: " << m_modelScale << std::endl;
@@ -90,10 +92,10 @@ protected:
             return;
         }
 
-        // Toggle rotation
+        // Toggle auto-rotation
         if (input->isKeyPressed(Pina::Key::Space)) {
-            m_rotate = !m_rotate;
-            std::cout << "Rotation: " << (m_rotate ? "ON" : "OFF") << std::endl;
+            m_autoRotate = !m_autoRotate;
+            std::cout << "Auto-rotation: " << (m_autoRotate ? "ON" : "OFF") << std::endl;
         }
 
         // Camera movement
@@ -119,9 +121,9 @@ protected:
 
         m_camera.lookAt(m_cameraPos, m_cameraPos + m_cameraFront, m_cameraUp);
 
-        // Update rotation
-        if (m_rotate) {
-            m_rotation += deltaTime * 30.0f;
+        // Update auto-rotation (Y axis only)
+        if (m_autoRotate) {
+            m_autoRotation += deltaTime * 30.0f;
         }
 
         m_lightManager.update();
@@ -144,14 +146,16 @@ protected:
         // Draw model
         if (m_model) {
             glm::mat4 model = glm::mat4(1.0f);
-            // Rotate animation around Y axis
-            model = glm::rotate(model, glm::radians(m_rotation), glm::vec3(0.0f, 1.0f, 0.0f));
+            // Position offset (including floor placement)
+            model = glm::translate(model, m_modelPosition + glm::vec3(0.0f, m_modelBaseY, 0.0f));
+            // Auto-rotation around Y axis
+            model = glm::rotate(model, glm::radians(m_autoRotation), glm::vec3(0.0f, 1.0f, 0.0f));
+            // Manual rotation controls (applied in Y, X, Z order)
+            model = glm::rotate(model, glm::radians(m_modelRotation.y), glm::vec3(0.0f, 1.0f, 0.0f));
+            model = glm::rotate(model, glm::radians(m_modelRotation.x), glm::vec3(1.0f, 0.0f, 0.0f));
+            model = glm::rotate(model, glm::radians(m_modelRotation.z), glm::vec3(0.0f, 0.0f, 1.0f));
             // Scale to fit
             model = glm::scale(model, glm::vec3(m_modelScale));
-            // Stand the model up (glTF may have Z-up, we need Y-up)
-            model = glm::rotate(model, glm::radians(-90.0f), glm::vec3(1.0f, 0.0f, 0.0f));
-            // Center the model (translate by negative center to bring center to origin)
-            model = glm::translate(model, -m_modelCenter);
 
             glm::mat3 normalMatrix = glm::transpose(glm::inverse(glm::mat3(model)));
             m_shader->setMat4("uModel", model);
@@ -162,7 +166,7 @@ protected:
             // Draw fallback cube
             glm::mat4 model = glm::mat4(1.0f);
             model = glm::translate(model, glm::vec3(0.0f, 0.5f, 0.0f));
-            model = glm::rotate(model, glm::radians(m_rotation), glm::vec3(0.0f, 1.0f, 0.0f));
+            model = glm::rotate(model, glm::radians(m_autoRotation), glm::vec3(0.0f, 1.0f, 0.0f));
 
             glm::mat3 normalMatrix = glm::transpose(glm::inverse(glm::mat3(model)));
             m_shader->setMat4("uModel", model);
@@ -193,19 +197,21 @@ protected:
         using namespace Pina::Widgets;
 
         Pina::Color green = Pina::Color::green();
-        Pina::Color gray = Pina::Color::gray();
 
-        setNextWindowSize(Pina::Vector2(220, 0));
+        setNextWindowSize(Pina::Vector2(280, 0));
         Window window("Model Loader", nullptr, Pina::UIWindowFlags::AlwaysAutoResize);
         if (window) {
             if (CollapsingHeader header("Model Info", Pina::UITreeNodeFlags::DefaultOpen); header) {
                 if (m_model) {
                     Text{green, "Model loaded successfully"};
-                    char meshBuf[32], matBuf[32];
+                    char meshBuf[32], matBuf[32], sizeBuf[64];
                     snprintf(meshBuf, sizeof(meshBuf), "Meshes: %zu", m_model->getMeshCount());
                     snprintf(matBuf, sizeof(matBuf), "Materials: %zu", m_model->getMaterialCount());
+                    snprintf(sizeBuf, sizeof(sizeBuf), "Size: %.2f x %.2f x %.2f",
+                             m_model->getSize().x, m_model->getSize().y, m_model->getSize().z);
                     { Text t1(meshBuf); }
                     { Text t2(matBuf); }
+                    { Text t3(sizeBuf); }
                 } else {
                     Text{Pina::Color::red(), "Model failed to load"};
                     Text{"Using fallback cube"};
@@ -214,8 +220,31 @@ protected:
 
             Separator();
 
+            if (CollapsingHeader header("Transform", Pina::UITreeNodeFlags::DefaultOpen); header) {
+                Text{"Position:"};
+                SliderFloat("X##pos", &m_modelPosition.x, -5.0f, 5.0f);
+                SliderFloat("Y##pos", &m_modelPosition.y, -2.0f, 5.0f);
+                SliderFloat("Z##pos", &m_modelPosition.z, -5.0f, 5.0f);
+
+                Spacing();
+
+                Text{"Rotation (degrees):"};
+                SliderFloat("X##rot", &m_modelRotation.x, -180.0f, 180.0f);
+                SliderFloat("Y##rot", &m_modelRotation.y, -180.0f, 180.0f);
+                SliderFloat("Z##rot", &m_modelRotation.z, -180.0f, 180.0f);
+
+                Spacing();
+
+                if (Button("Reset All")) {
+                    m_modelPosition = glm::vec3(0.0f);
+                    m_modelRotation = glm::vec3(0.0f);
+                }
+            }
+
+            Separator();
+
             if (CollapsingHeader header("Animation", Pina::UITreeNodeFlags::DefaultOpen); header) {
-                Text(m_rotate ? green : gray, "[Space] Rotation");
+                Checkbox("[Space] Auto-Rotate", &m_autoRotate);
             }
 
             Separator();
@@ -267,12 +296,15 @@ private:
     float m_pitch = -15.0f;
 
     // Animation
-    float m_rotation = 0.0f;
-    bool m_rotate = true;
+    float m_autoRotation = 0.0f;
+    bool m_autoRotate = false;
 
-    // Model auto-fit
+    // Model transform controls
+    glm::vec3 m_modelPosition{0.0f};  // X, Y, Z position
+    glm::vec3 m_modelRotation{0.0f};  // X, Y, Z rotation in degrees
     float m_modelScale = 1.0f;
     glm::vec3 m_modelCenter{0.0f};
+    float m_modelBaseY = 0.0f;  // Y offset to place model on floor
 };
 
 PINA_APPLICATION(ModelSample)

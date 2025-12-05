@@ -10,6 +10,19 @@
 
 namespace Pina {
 
+// Convert assimp matrix to GLM matrix
+// aiMatrix4x4 uses row-major with row vectors (v * M)
+// GLM uses column-major with column vectors (M * v)
+// Direct copy without transpose works for OpenGL
+static glm::mat4 aiToGlm(const aiMatrix4x4& m) {
+    return glm::mat4(
+        m.a1, m.a2, m.a3, m.a4,
+        m.b1, m.b2, m.b3, m.b4,
+        m.c1, m.c2, m.c3, m.c4,
+        m.d1, m.d2, m.d3, m.d4
+    );
+}
+
 UNIQUE<Model> AssimpLoader::load(GraphicsDevice* device, const std::string& path) {
     Assimp::Importer importer;
 
@@ -17,11 +30,11 @@ UNIQUE<Model> AssimpLoader::load(GraphicsDevice* device, const std::string& path
     unsigned int flags =
         aiProcess_Triangulate |           // Convert to triangles
         aiProcess_GenNormals |            // Generate normals if missing
-        aiProcess_FlipUVs |               // Flip UVs for OpenGL
         aiProcess_CalcTangentSpace |      // For normal mapping
         aiProcess_JoinIdenticalVertices | // Optimize mesh
-        aiProcess_OptimizeMeshes |        // Reduce draw calls
-        aiProcess_PreTransformVertices;   // Apply node transforms to vertices
+        aiProcess_OptimizeMeshes;         // Reduce draw calls
+        // Note: NOT using aiProcess_FlipUVs - glTF already has correct UV orientation
+        // Note: NOT using aiProcess_PreTransformVertices - we apply node transforms manually
 
     const aiScene* scene = importer.ReadFile(path, flags);
 
@@ -66,27 +79,28 @@ UNIQUE<Model> AssimpLoader::load(GraphicsDevice* device, const std::string& path
     return model;
 }
 
-void AssimpLoader::processNode(aiNode* node, const aiScene* scene, LoadContext& ctx, const glm::mat4& /*parentTransform*/) {
-    // With aiProcess_PreTransformVertices, all transforms are already applied to vertices
-    // We just need to traverse and collect meshes
+void AssimpLoader::processNode(aiNode* node, const aiScene* scene, LoadContext& ctx, const glm::mat4& parentTransform) {
+    // Calculate this node's world transform by accumulating parent transform
+    glm::mat4 nodeTransform = aiToGlm(node->mTransformation);
+    glm::mat4 worldTransform = parentTransform * nodeTransform;
 
-    // Process meshes in this node
+    // Process meshes in this node with the accumulated transform
     for (unsigned int i = 0; i < node->mNumMeshes; ++i) {
         aiMesh* mesh = scene->mMeshes[node->mMeshes[i]];
-        auto staticMesh = processMesh(mesh, ctx, glm::mat4(1.0f));
+        auto staticMesh = processMesh(mesh, ctx, worldTransform);
         if (staticMesh) {
             ctx.model->m_meshes.push_back(std::move(staticMesh));
             ctx.model->m_meshMaterialIndices.push_back(mesh->mMaterialIndex);
         }
     }
 
-    // Recursively process child nodes
+    // Recursively process child nodes with this node's world transform
     for (unsigned int i = 0; i < node->mNumChildren; ++i) {
-        processNode(node->mChildren[i], scene, ctx, glm::mat4(1.0f));
+        processNode(node->mChildren[i], scene, ctx, worldTransform);
     }
 }
 
-UNIQUE<StaticMesh> AssimpLoader::processMesh(aiMesh* mesh, LoadContext& ctx, const glm::mat4& /*transform*/) {
+UNIQUE<StaticMesh> AssimpLoader::processMesh(aiMesh* mesh, LoadContext& ctx, const glm::mat4& transform) {
     std::vector<float> vertices;
     std::vector<uint32_t> indices;
 
@@ -94,30 +108,35 @@ UNIQUE<StaticMesh> AssimpLoader::processMesh(aiMesh* mesh, LoadContext& ctx, con
     vertices.reserve(mesh->mNumVertices * 8);  // pos(3) + normal(3) + uv(2)
     indices.reserve(mesh->mNumFaces * 3);
 
-    // With aiProcess_PreTransformVertices, vertex positions and normals are already in world space
-    // Process vertices
+    // Calculate normal matrix for transforming normals
+    glm::mat3 normalMatrix = glm::transpose(glm::inverse(glm::mat3(transform)));
+
+    // Process vertices, applying the node hierarchy transform
     for (unsigned int i = 0; i < mesh->mNumVertices; ++i) {
-        // Position (already transformed by assimp)
-        glm::vec3 pos(mesh->mVertices[i].x, mesh->mVertices[i].y, mesh->mVertices[i].z);
+        // Position - transform by node hierarchy
+        glm::vec4 rawPos(mesh->mVertices[i].x, mesh->mVertices[i].y, mesh->mVertices[i].z, 1.0f);
+        glm::vec3 pos = glm::vec3(transform * rawPos);
         vertices.push_back(pos.x);
         vertices.push_back(pos.y);
         vertices.push_back(pos.z);
 
-        // Expand model's bounding box
+        // Expand model's bounding box with transformed position
         ctx.model->m_boundingBox.expand(pos);
 
-        // Normal (already transformed by assimp)
+        // Normal - transform by normal matrix
         if (mesh->HasNormals()) {
-            vertices.push_back(mesh->mNormals[i].x);
-            vertices.push_back(mesh->mNormals[i].y);
-            vertices.push_back(mesh->mNormals[i].z);
+            glm::vec3 rawNormal(mesh->mNormals[i].x, mesh->mNormals[i].y, mesh->mNormals[i].z);
+            glm::vec3 normal = glm::normalize(normalMatrix * rawNormal);
+            vertices.push_back(normal.x);
+            vertices.push_back(normal.y);
+            vertices.push_back(normal.z);
         } else {
             vertices.push_back(0.0f);
             vertices.push_back(1.0f);
             vertices.push_back(0.0f);
         }
 
-        // Texture coordinates
+        // Texture coordinates (unchanged)
         if (mesh->mTextureCoords[0]) {
             vertices.push_back(mesh->mTextureCoords[0][i].x);
             vertices.push_back(mesh->mTextureCoords[0][i].y);
