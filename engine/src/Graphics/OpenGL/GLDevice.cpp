@@ -3,6 +3,7 @@
 #include "GLDevice.h"
 #include "GLShader.h"
 #include "GLBuffer.h"
+#include "GLTexture.h"
 #include <iostream>
 
 namespace Pina {
@@ -39,6 +40,13 @@ UNIQUE<IndexBuffer> GLDevice::createIndexBuffer(const uint32_t* indices, uint32_
 
 UNIQUE<VertexArray> GLDevice::createVertexArray() {
     return MAKE_UNIQUE<GLVertexArray>();
+}
+
+UNIQUE<Texture> GLDevice::createTexture(const unsigned char* data,
+                                        uint32_t width,
+                                        uint32_t height,
+                                        uint32_t channels) {
+    return MAKE_UNIQUE<GLTexture>(data, width, height, channels);
 }
 
 // ============================================================================

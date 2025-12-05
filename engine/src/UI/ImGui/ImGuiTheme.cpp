@@ -3,8 +3,41 @@
 
 #include "ImGuiTheme.h"
 #include <imgui.h>
+#include <fstream>
+#include <string>
+
+#ifdef __APPLE__
+#include <mach-o/dyld.h>
+#include <libgen.h>
+#endif
 
 namespace Pina {
+
+namespace {
+
+// Get the directory containing the executable
+std::string getExecutableDir() {
+#ifdef __APPLE__
+    char path[1024];
+    uint32_t size = sizeof(path);
+    if (_NSGetExecutablePath(path, &size) == 0) {
+        // Get directory of executable
+        char* dir = dirname(path);
+        if (dir) {
+            return std::string(dir);
+        }
+    }
+#endif
+    return ".";
+}
+
+// Check if file exists
+bool fileExists(const std::string& path) {
+    std::ifstream f(path);
+    return f.good();
+}
+
+} // anonymous namespace
 
 void applyPinaTheme() {
     ImGuiStyle& style = ImGui::GetStyle();
@@ -128,11 +161,27 @@ void applyPinaTheme() {
 void loadPinaFont(float fontSize) {
     ImGuiIO& io = ImGui::GetIO();
 
-    // Try relative to executable: fonts/Roboto-Medium.ttf
-    ImFont* font = io.Fonts->AddFontFromFileTTF("fonts/Roboto-Medium.ttf", fontSize);
-    if (font) {
-        io.FontDefault = font;
-        return;
+    // Build list of paths to search for fonts
+    std::string fontName = "Roboto-Medium.ttf";
+    std::string exeDir = getExecutableDir();
+
+    // On macOS bundles, executable is at .app/Contents/MacOS/
+    // and we want to look for fonts at .app/../fonts/ (sibling to .app)
+    std::string paths[] = {
+        "fonts/" + fontName,                           // Current directory
+        exeDir + "/fonts/" + fontName,                 // Next to executable
+        exeDir + "/../../../fonts/" + fontName,        // Outside .app bundle (bin/fonts)
+        exeDir + "/../../Resources/fonts/" + fontName  // Inside bundle Resources
+    };
+
+    for (const auto& path : paths) {
+        if (fileExists(path)) {
+            ImFont* font = io.Fonts->AddFontFromFileTTF(path.c_str(), fontSize);
+            if (font) {
+                io.FontDefault = font;
+                return;
+            }
+        }
     }
 
     // Fallback: use ImGui default font

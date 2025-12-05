@@ -9,6 +9,7 @@
 #include "Shader.h"
 #include "Buffer.h"
 #include "VertexLayout.h"
+#include "Texture.h"
 
 namespace Pina {
 
@@ -33,6 +34,16 @@ public:
 
     /// Create a vertex array object
     virtual UNIQUE<VertexArray> createVertexArray() = 0;
+
+    /// Create a texture from raw pixel data
+    /// @param data RGB or RGBA pixel data
+    /// @param width Image width in pixels
+    /// @param height Image height in pixels
+    /// @param channels Number of channels (3=RGB, 4=RGBA)
+    virtual UNIQUE<Texture> createTexture(const unsigned char* data,
+                                          uint32_t width,
+                                          uint32_t height,
+                                          uint32_t channels) = 0;
 
     // ========================================================================
     // Frame Lifecycle

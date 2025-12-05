@@ -17,6 +17,10 @@ public:
     UNIQUE<VertexBuffer> createVertexBuffer(const void* data, size_t size) override;
     UNIQUE<IndexBuffer> createIndexBuffer(const uint32_t* indices, uint32_t count) override;
     UNIQUE<VertexArray> createVertexArray() override;
+    UNIQUE<Texture> createTexture(const unsigned char* data,
+                                  uint32_t width,
+                                  uint32_t height,
+                                  uint32_t channels) override;
 
     // Frame Lifecycle
     void beginFrame() override;

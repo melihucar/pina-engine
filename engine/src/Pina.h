@@ -32,6 +32,18 @@
 #include "Graphics/Primitives/QuadMesh.h"
 #include "Graphics/Primitives/CubeMesh.h"
 #include "Graphics/Camera.h"
+#include "Graphics/Material.h"
+#include "Graphics/Texture.h"
+
+// Lighting
+#include "Graphics/Lighting/Light.h"
+#include "Graphics/Lighting/DirectionalLight.h"
+#include "Graphics/Lighting/PointLight.h"
+#include "Graphics/Lighting/SpotLight.h"
+#include "Graphics/Lighting/LightManager.h"
+
+// Shaders
+#include "Graphics/Shaders/ShaderLibrary.h"
 
 // Math
 #include "Math/Vector2.h"
