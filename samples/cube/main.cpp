@@ -112,7 +112,7 @@ protected:
         m_shader->bind();
         m_shader->setMat4("uMVP", mvp);
         m_shader->setMat4("uModel", model);
-        m_cube->draw(m_shader.get());
+        m_cube->draw();
 
         m_device->endFrame();
     }

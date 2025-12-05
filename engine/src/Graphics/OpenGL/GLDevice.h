@@ -29,8 +29,8 @@ public:
     void setBlending(bool enabled) override;
 
     // Drawing
-    void draw(VertexArray* vao, Shader* shader, uint32_t vertexCount) override;
-    void drawIndexed(VertexArray* vao, Shader* shader) override;
+    void draw(VertexArray* vao, uint32_t vertexCount) override;
+    void drawIndexed(VertexArray* vao) override;
 };
 
 } // namespace Pina

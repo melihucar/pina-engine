@@ -7,7 +7,6 @@
 #include "../Core/Memory.h"
 #include "GraphicsDevice.h"
 #include "Buffer.h"
-#include "Shader.h"
 
 namespace Pina {
 
@@ -17,8 +16,9 @@ class PINA_API Mesh {
 public:
     virtual ~Mesh() = default;
 
-    /// Draw the mesh using the specified shader
-    void draw(Shader* shader);
+    /// Draw the mesh
+    /// @note Shader must be bound before calling this method
+    void draw();
 
     /// Get the vertex array object
     VertexArray* getVertexArray() const { return m_vao.get(); }

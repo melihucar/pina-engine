@@ -5,7 +5,7 @@
 
 #include "../Core/Export.h"
 #include "../Core/Memory.h"
-#include "../Platform/GraphicsContext.h"
+#include "../Platform/Graphics.h"
 #include "Shader.h"
 #include "Buffer.h"
 #include "VertexLayout.h"
@@ -65,10 +65,12 @@ public:
     // ========================================================================
 
     /// Draw vertices (non-indexed)
-    virtual void draw(VertexArray* vao, Shader* shader, uint32_t vertexCount) = 0;
+    /// @note Shader must be bound before calling this method
+    virtual void draw(VertexArray* vao, uint32_t vertexCount) = 0;
 
     /// Draw indexed vertices
-    virtual void drawIndexed(VertexArray* vao, Shader* shader) = 0;
+    /// @note Shader must be bound before calling this method
+    virtual void drawIndexed(VertexArray* vao) = 0;
 
     // ========================================================================
     // Factory

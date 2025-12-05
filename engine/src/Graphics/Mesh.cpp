@@ -9,8 +9,8 @@ Mesh::Mesh(GraphicsDevice* device)
 {
 }
 
-void Mesh::draw(Shader* shader) {
-    m_device->draw(m_vao.get(), shader, m_vertexCount);
+void Mesh::draw() {
+    m_device->draw(m_vao.get(), m_vertexCount);
 }
 
 } // namespace Pina

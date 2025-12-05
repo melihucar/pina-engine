@@ -88,14 +88,12 @@ void GLDevice::setBlending(bool enabled) {
 // Drawing
 // ============================================================================
 
-void GLDevice::draw(VertexArray* vao, Shader* shader, uint32_t vertexCount) {
-    shader->bind();
+void GLDevice::draw(VertexArray* vao, uint32_t vertexCount) {
     vao->bind();
     glDrawArrays(GL_TRIANGLES, 0, vertexCount);
 }
 
-void GLDevice::drawIndexed(VertexArray* vao, Shader* shader) {
-    shader->bind();
+void GLDevice::drawIndexed(VertexArray* vao) {
     vao->bind();
     IndexBuffer* ibo = vao->getIndexBuffer();
     if (ibo) {

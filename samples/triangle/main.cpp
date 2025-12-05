@@ -58,7 +58,8 @@ protected:
     void onRender() override {
         m_device->beginFrame();
         m_device->clear(0.1f, 0.1f, 0.15f);
-        m_triangle->draw(m_shader.get());
+        m_shader->bind();
+        m_triangle->draw();
         m_device->endFrame();
     }
 

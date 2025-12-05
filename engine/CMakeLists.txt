@@ -44,6 +44,8 @@ target_link_libraries(${ENGINE_NAME}
         glm::glm
         spdlog::spdlog
         stb
+    PRIVATE
+        imgui
 )
 
 # Platform-specific settings
@@ -80,3 +82,10 @@ if(PINA_DEV_MODE)
         VISIBILITY_INLINES_HIDDEN YES
     )
 endif()
+
+# Copy fonts to build output (next to executables)
+file(GLOB ENGINE_FONTS "${CMAKE_CURRENT_SOURCE_DIR}/resources/fonts/*.ttf")
+foreach(FONT ${ENGINE_FONTS})
+    get_filename_component(FONT_NAME ${FONT} NAME)
+    configure_file(${FONT} ${CMAKE_BINARY_DIR}/bin/fonts/${FONT_NAME} COPYONLY)
+endforeach()
