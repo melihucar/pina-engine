@@ -34,6 +34,8 @@
 #include "Graphics/Camera.h"
 #include "Graphics/Material.h"
 #include "Graphics/Texture.h"
+#include "Graphics/Model.h"
+#include "Graphics/Primitives/StaticMesh.h"
 
 // Lighting
 #include "Graphics/Lighting/Light.h"

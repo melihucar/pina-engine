@@ -38,6 +38,13 @@ FetchContent_Declare(
     GIT_TAG        docking
 )
 
+# assimp - 3D model loading
+FetchContent_Declare(
+    assimp
+    GIT_REPOSITORY https://github.com/assimp/assimp.git
+    GIT_TAG        v5.4.3
+)
+
 # Google Test - Testing framework
 FetchContent_Declare(
     googletest
@@ -76,6 +83,16 @@ if(NOT glad_POPULATED)
     FetchContent_Populate(glad)
 endif()
 message(STATUS "  - glad: OK")
+
+# assimp (disable unnecessary features for faster builds)
+set(ASSIMP_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+set(ASSIMP_INSTALL OFF CACHE BOOL "" FORCE)
+set(ASSIMP_BUILD_ASSIMP_TOOLS OFF CACHE BOOL "" FORCE)
+set(ASSIMP_BUILD_SAMPLES OFF CACHE BOOL "" FORCE)
+set(ASSIMP_BUILD_DOCS OFF CACHE BOOL "" FORCE)
+set(ASSIMP_INJECT_DEBUG_POSTFIX OFF CACHE BOOL "" FORCE)
+FetchContent_MakeAvailable(assimp)
+message(STATUS "  - assimp: OK")
 
 # googletest
 set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)

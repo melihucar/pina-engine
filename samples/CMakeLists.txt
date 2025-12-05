@@ -6,6 +6,7 @@ add_subdirectory(cube)
 add_subdirectory(input)
 add_subdirectory(lighting)
 add_subdirectory(texture)
+add_subdirectory(model)
 
 # Add more samples here as they are created
 # add_subdirectory(character)

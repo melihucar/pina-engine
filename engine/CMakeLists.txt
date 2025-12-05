@@ -46,6 +46,7 @@ target_link_libraries(${ENGINE_NAME}
         stb
     PRIVATE
         imgui
+        assimp::assimp
 )
 
 # Platform-specific settings
