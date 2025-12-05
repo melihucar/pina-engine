@@ -55,6 +55,10 @@
 #include "Math/Vector3.h"
 #include "Math/Vector4.h"
 #include "Math/Color.h"
+#include "Math/Mathf.h"
+#include "Math/Ray.h"
+#include "Math/Plane.h"
+#include "Math/Geometry.h"
 
 // UI
 #include "UI/UI.h"
@@ -65,9 +69,11 @@
 // #include "IO/Log.h"
 // #include "IO/File.h"
 
-// Scene (TODO)
-// #include "Scene/Scene.h"
-// #include "Scene/Node.h"
+// Scene
+#include "Scene/Transform.h"
+#include "Scene/Node.h"
+#include "Scene/Scene.h"
+#include "Scene/SceneRenderer.h"
 
 // Resource (TODO)
 // #include "Resource/ResourceCache.h"
