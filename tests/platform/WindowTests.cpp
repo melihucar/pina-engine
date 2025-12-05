@@ -36,7 +36,7 @@ TEST(WindowConfigTest, CustomValues) {
 
 // Test Window factory creates platform-specific implementation
 TEST(WindowTest, FactoryCreation) {
-    Window* window = Window::create();
+    Window* window = Window::createDefault();
     ASSERT_NE(window, nullptr);
 
     // Window should not be created until create() is called

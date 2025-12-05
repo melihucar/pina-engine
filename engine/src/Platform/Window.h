@@ -1,6 +1,10 @@
 #pragma once
 
+/// Pina Engine - Window Subsystem
+/// Abstract window interface for platform-specific implementations
+
 #include "../Core/Export.h"
+#include "../Core/Subsystem.h"
 #include <string>
 #include <functional>
 
@@ -20,11 +24,15 @@ struct PINA_API WindowConfig {
     bool resizable = false;
 };
 
-/// Abstract window interface
+/// Abstract window subsystem interface
 /// Platform-specific implementations (Cocoa, Win32, X11) derive from this
-class PINA_API Window {
+class PINA_API Window : public Subsystem {
 public:
-    virtual ~Window() = default;
+    ~Window() override = default;
+
+    // ========================================================================
+    // Window Management
+    // ========================================================================
 
     /// Create and show the window
     virtual bool create(const WindowConfig& config) = 0;
@@ -38,11 +46,19 @@ public:
     /// Check if window should close
     virtual bool shouldClose() const = 0;
 
+    // ========================================================================
+    // Native Handles
+    // ========================================================================
+
     /// Get native window handle (NSWindow*, HWND, etc.)
     virtual void* getNativeHandle() const = 0;
 
     /// Get native view/content area handle (NSView*, etc.)
     virtual void* getNativeView() const = 0;
+
+    // ========================================================================
+    // Properties
+    // ========================================================================
 
     /// Get window dimensions
     virtual int getWidth() const = 0;
@@ -51,15 +67,22 @@ public:
     /// Set window title
     virtual void setTitle(const std::string& title) = 0;
 
-    /// Callbacks
+    // ========================================================================
+    // Callbacks
+    // ========================================================================
+
     using ResizeCallback = std::function<void(int width, int height)>;
     using CloseCallback = std::function<void()>;
 
     void setResizeCallback(ResizeCallback callback) { m_resizeCallback = callback; }
     void setCloseCallback(CloseCallback callback) { m_closeCallback = callback; }
 
-    /// Factory method - creates platform-specific window
-    static Window* create();
+    // ========================================================================
+    // Factory
+    // ========================================================================
+
+    /// Creates platform-specific window (default implementation)
+    static Window* createDefault();
 
 protected:
     ResizeCallback m_resizeCallback;

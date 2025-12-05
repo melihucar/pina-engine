@@ -11,7 +11,7 @@ CocoaGLContext::~CocoaGLContext() {
     destroy();
 }
 
-bool CocoaGLContext::create(Window* window, const ContextConfig& config) {
+bool CocoaGLContext::create(Window* window, const GraphicsConfig& config) {
     @autoreleasepool {
         m_window = window;
 
@@ -134,7 +134,7 @@ void CocoaGLContext::setVSync(bool enabled) {
     }
 }
 
-void CocoaGLContext::update() {
+void CocoaGLContext::updateContext() {
     @autoreleasepool {
         if (m_context) {
             [m_context update];
@@ -147,7 +147,7 @@ GraphicsBackend CocoaGLContext::getBackend() const {
 }
 
 // Factory implementation
-GraphicsContext* GraphicsContext::create(GraphicsBackend backend) {
+Graphics* Graphics::createDefault(GraphicsBackend backend) {
     switch (backend) {
         case GraphicsBackend::OpenGL:
             return new CocoaGLContext();

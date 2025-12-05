@@ -1,4 +1,5 @@
 #import "CocoaWindow.h"
+#import "CocoaInput.h"
 #import <Cocoa/Cocoa.h>
 
 namespace Pina {
@@ -30,6 +31,20 @@ class CocoaWindow;
         // Use backing dimensions (pixels) for Retina displays
         NSRect backingBounds = [view convertRectToBacking:[view bounds]];
         self.pinaWindow->onResize((int)backingBounds.size.width, (int)backingBounds.size.height);
+    }
+}
+
+- (void)windowDidBecomeKey:(NSNotification*)notification {
+    (void)notification;
+    if (self.pinaWindow) {
+        self.pinaWindow->onFocusChange(true);
+    }
+}
+
+- (void)windowDidResignKey:(NSNotification*)notification {
+    (void)notification;
+    if (self.pinaWindow) {
+        self.pinaWindow->onFocusChange(false);
     }
 }
 
@@ -158,7 +173,96 @@ void CocoaWindow::pollEvents() {
                                            untilDate:nil
                                               inMode:NSDefaultRunLoopMode
                                              dequeue:YES])) {
-            [NSApp sendEvent:event];
+
+            // Track if we handled this event (to prevent system beep for keys)
+            bool handled = false;
+
+            // Route input events to handler
+            if (m_inputHandler) {
+                switch ([event type]) {
+                    case NSEventTypeKeyDown:
+                        m_inputHandler->processKeyDown([event keyCode]);
+                        m_inputHandler->processModifiersChanged((unsigned int)[event modifierFlags]);
+                        handled = true;  // Don't forward to system (prevents beep)
+                        break;
+
+                    case NSEventTypeKeyUp:
+                        m_inputHandler->processKeyUp([event keyCode]);
+                        m_inputHandler->processModifiersChanged((unsigned int)[event modifierFlags]);
+                        handled = true;  // Don't forward to system
+                        break;
+
+                    case NSEventTypeFlagsChanged:
+                        m_inputHandler->processModifiersChanged((unsigned int)[event modifierFlags]);
+                        break;
+
+                    case NSEventTypeLeftMouseDown:
+                        m_inputHandler->processMouseDown(MouseButton::Left);
+                        break;
+
+                    case NSEventTypeLeftMouseUp:
+                        m_inputHandler->processMouseUp(MouseButton::Left);
+                        break;
+
+                    case NSEventTypeRightMouseDown:
+                        m_inputHandler->processMouseDown(MouseButton::Right);
+                        break;
+
+                    case NSEventTypeRightMouseUp:
+                        m_inputHandler->processMouseUp(MouseButton::Right);
+                        break;
+
+                    case NSEventTypeOtherMouseDown:
+                        if ([event buttonNumber] == 2) {
+                            m_inputHandler->processMouseDown(MouseButton::Middle);
+                        } else if ([event buttonNumber] == 3) {
+                            m_inputHandler->processMouseDown(MouseButton::X1);
+                        } else if ([event buttonNumber] == 4) {
+                            m_inputHandler->processMouseDown(MouseButton::X2);
+                        }
+                        break;
+
+                    case NSEventTypeOtherMouseUp:
+                        if ([event buttonNumber] == 2) {
+                            m_inputHandler->processMouseUp(MouseButton::Middle);
+                        } else if ([event buttonNumber] == 3) {
+                            m_inputHandler->processMouseUp(MouseButton::X1);
+                        } else if ([event buttonNumber] == 4) {
+                            m_inputHandler->processMouseUp(MouseButton::X2);
+                        }
+                        break;
+
+                    case NSEventTypeMouseMoved:
+                    case NSEventTypeLeftMouseDragged:
+                    case NSEventTypeRightMouseDragged:
+                    case NSEventTypeOtherMouseDragged: {
+                        NSPoint location = [event locationInWindow];
+                        NSRect viewBounds = [m_view bounds];
+                        // Convert from Cocoa coordinates (origin bottom-left) to top-left
+                        m_inputHandler->processMouseMove(
+                            static_cast<float>(location.x),
+                            static_cast<float>(viewBounds.size.height - location.y)
+                        );
+                        break;
+                    }
+
+                    case NSEventTypeScrollWheel:
+                        m_inputHandler->processScroll(
+                            static_cast<float>([event scrollingDeltaX]),
+                            static_cast<float>([event scrollingDeltaY])
+                        );
+                        break;
+
+                    default:
+                        break;
+                }
+            }
+
+            // Only forward non-handled events to the system
+            // (Key events cause beep if forwarded after handling)
+            if (!handled) {
+                [NSApp sendEvent:event];
+            }
         }
     }
 }
@@ -204,8 +308,14 @@ void CocoaWindow::onClose() {
     }
 }
 
+void CocoaWindow::onFocusChange(bool hasFocus) {
+    if (m_inputHandler) {
+        m_inputHandler->processFocusChange(hasFocus);
+    }
+}
+
 // Factory implementation
-Window* Window::create() {
+Window* Window::createDefault() {
     return new CocoaWindow();
 }
 

@@ -1,5 +1,8 @@
 #pragma once
 
+/// Pina Engine - Cocoa Window Implementation
+/// macOS-specific window using NSWindow
+
 #include "../Window.h"
 
 #ifdef __OBJC__
@@ -13,6 +16,8 @@ typedef void PinaWindowDelegate;
 #endif
 
 namespace Pina {
+
+class CocoaInput;
 
 /// macOS Cocoa window implementation
 class CocoaWindow : public Window {
@@ -33,11 +38,17 @@ public:
     // Called by delegate
     void onResize(int width, int height);
     void onClose();
+    void onFocusChange(bool hasFocus);
+
+    // Input handler
+    void setInputHandler(CocoaInput* input) { m_inputHandler = input; }
+    CocoaInput* getInputHandler() const { return m_inputHandler; }
 
 private:
     NSWindow* m_window = nullptr;
     NSView* m_view = nullptr;
     PinaWindowDelegate* m_delegate = nullptr;
+    CocoaInput* m_inputHandler = nullptr;
     int m_width = 0;
     int m_height = 0;
     bool m_shouldClose = false;

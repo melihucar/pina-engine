@@ -1,6 +1,15 @@
 #include "Application.h"
+#include "Context.h"
 #include "../Platform/Window.h"
-#include "../Platform/GraphicsContext.h"
+#include "../Platform/Graphics.h"
+#include "../Input/Input.h"
+#include "../UI/UI.h"
+
+// Platform-specific includes for connecting input to window
+#ifdef __APPLE__
+#include "../Platform/Cocoa/CocoaWindow.h"
+#include "../Platform/Cocoa/CocoaInput.h"
+#endif
 
 #include <chrono>
 
@@ -10,13 +19,67 @@ Application::Application() = default;
 
 Application::~Application() = default;
 
+Window* Application::getWindow() const {
+    return m_context ? m_context->getSubsystem<Window>() : nullptr;
+}
+
+Graphics* Application::getGraphics() const {
+    return m_context ? m_context->getSubsystem<Graphics>() : nullptr;
+}
+
+Input* Application::getInput() const {
+    return m_context ? m_context->getSubsystem<Input>() : nullptr;
+}
+
+UISubsystem* Application::getUI() const {
+    return m_context ? m_context->getSubsystem<UISubsystem>() : nullptr;
+}
+
+void Application::createSubsystems() {
+    // Create window (uses platform default)
+    Window* window = Window::createDefault();
+    m_context->registerSubsystem<Window>(window);
+
+    // Create graphics (uses platform default with OpenGL backend)
+    Graphics* graphics = Graphics::createDefault(GraphicsBackend::OpenGL);
+    m_context->registerSubsystem<Graphics>(graphics);
+
+    // Create input (uses platform default)
+    Input* input = Input::createDefault(window);
+    m_context->registerSubsystem<Input>(input);
+
+    // Create UI (uses platform default)
+    UISubsystem* ui = UISubsystem::createDefault();
+    m_context->registerSubsystem<UISubsystem>(ui);
+
+    // Platform-specific: connect input handler to window for event routing
+#ifdef __APPLE__
+    auto* cocoaWindow = dynamic_cast<CocoaWindow*>(window);
+    auto* cocoaInput = dynamic_cast<CocoaInput*>(input);
+    if (cocoaWindow && cocoaInput) {
+        cocoaWindow->setInputHandler(cocoaInput);
+    }
+#endif
+}
+
 int Application::run() {
-    // Create window
-    m_window.reset(Window::create());
-    if (!m_window) {
+    // Create context
+    m_context = MAKE_UNIQUE<Context>();
+
+    // Create subsystems
+    createSubsystems();
+
+    // Get subsystems
+    auto* window = getWindow();
+    auto* graphics = getGraphics();
+    auto* input = getInput();
+    auto* ui = getUI();
+
+    if (!window || !graphics || !input || !ui) {
         return -1;
     }
 
+    // Configure window
     WindowConfig windowConfig;
     windowConfig.width = m_config.windowWidth;
     windowConfig.height = m_config.windowHeight;
@@ -29,64 +92,79 @@ int Application::run() {
     windowConfig.maximized = m_config.maximized;
     windowConfig.resizable = m_config.resizable;
 
-    if (!m_window->create(windowConfig)) {
+    if (!window->create(windowConfig)) {
         return -1;
     }
 
-    // Create graphics context
-    m_context.reset(GraphicsContext::create(GraphicsBackend::OpenGL));
-    if (!m_context) {
+    // Configure graphics
+    GraphicsConfig graphicsConfig;
+    graphicsConfig.vsync = m_config.vsync;
+
+    if (!graphics->create(window, graphicsConfig)) {
         return -1;
     }
 
-    ContextConfig contextConfig;
-    contextConfig.vsync = m_config.vsync;
-
-    if (!m_context->create(m_window.get(), contextConfig)) {
+    // Create UI (requires window and graphics)
+    UIConfig uiConfig;
+    if (!ui->create(window, graphics, uiConfig)) {
         return -1;
     }
 
-    // Set up window callbacks (after context is created)
-    m_window->setResizeCallback([this](int w, int h) {
-        m_context->update();
+    // Set up window callbacks
+    window->setResizeCallback([this, graphics](int w, int h) {
+        graphics->updateContext();
         onResize(w, h);
     });
 
-    m_window->setCloseCallback([this]() {
+    window->setCloseCallback([this]() {
         m_running = false;
     });
 
-    // Initialize
+    // Initialize all subsystems
+    m_context->initializeSubsystems();
+
+    // User init
     onInit();
 
     // Main loop
     m_running = true;
     auto lastTime = std::chrono::high_resolution_clock::now();
 
-    while (m_running && !m_window->shouldClose()) {
+    while (m_running && !window->shouldClose()) {
         // Calculate delta time
         auto currentTime = std::chrono::high_resolution_clock::now();
         float deltaTime = std::chrono::duration<float>(currentTime - lastTime).count();
         lastTime = currentTime;
 
         // Poll events
-        m_window->pollEvents();
+        window->pollEvents();
+
+        // Update subsystems
+        m_context->updateSubsystems(deltaTime);
 
         // Update
         onUpdate(deltaTime);
 
         // Render
-        m_context->makeCurrent();
+        graphics->makeCurrent();
         onRender();
-        m_context->swapBuffers();
+
+        // UI rendering
+        ui->beginFrame();
+        onRenderUI();
+        ui->endFrame();
+
+        graphics->swapBuffers();
+
+        // End frame for input (clear per-frame state)
+        input->endFrame();
     }
 
-    // Shutdown
+    // User shutdown
     onShutdown();
 
-    // Cleanup
-    m_context->destroy();
-    m_window->destroy();
+    // Shutdown subsystems (in reverse order)
+    m_context->shutdownSubsystems();
 
     return 0;
 }

@@ -86,15 +86,32 @@ message(STATUS "  - googletest: OK")
 add_library(stb INTERFACE)
 target_include_directories(stb INTERFACE ${stb_SOURCE_DIR})
 
-# Create imgui library target
+# Create imgui library target with backends
 set(IMGUI_SOURCES
     ${imgui_SOURCE_DIR}/imgui.cpp
     ${imgui_SOURCE_DIR}/imgui_demo.cpp
     ${imgui_SOURCE_DIR}/imgui_draw.cpp
     ${imgui_SOURCE_DIR}/imgui_tables.cpp
     ${imgui_SOURCE_DIR}/imgui_widgets.cpp
+    ${imgui_SOURCE_DIR}/backends/imgui_impl_opengl3.cpp
 )
+
+# Add platform-specific backends
+if(APPLE)
+    list(APPEND IMGUI_SOURCES ${imgui_SOURCE_DIR}/backends/imgui_impl_osx.mm)
+endif()
+
 add_library(imgui STATIC ${IMGUI_SOURCES})
-target_include_directories(imgui PUBLIC ${imgui_SOURCE_DIR})
+target_include_directories(imgui PUBLIC ${imgui_SOURCE_DIR} ${imgui_SOURCE_DIR}/backends)
+
+# Platform-specific settings for imgui
+if(APPLE)
+    find_library(COCOA_LIBRARY Cocoa)
+    find_library(GAME_CONTROLLER_LIBRARY GameController)
+    target_link_libraries(imgui PRIVATE ${COCOA_LIBRARY})
+    if(GAME_CONTROLLER_LIBRARY)
+        target_link_libraries(imgui PRIVATE ${GAME_CONTROLLER_LIBRARY})
+    endif()
+endif()
 
 message(STATUS "Dependencies configured successfully")

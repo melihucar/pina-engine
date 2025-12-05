@@ -3,6 +3,7 @@
 add_subdirectory(window)
 add_subdirectory(triangle)
 add_subdirectory(cube)
+add_subdirectory(input)
 
 # Add more samples here as they are created
 # add_subdirectory(character)

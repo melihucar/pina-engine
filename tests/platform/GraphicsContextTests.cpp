@@ -40,9 +40,9 @@ TEST(ContextConfigTest, CustomValues) {
     EXPECT_EQ(config.stencilBits, 0);
 }
 
-// Test GraphicsContext factory creates OpenGL context by default
-TEST(GraphicsContextTest, FactoryCreatesOpenGL) {
-    GraphicsContext* context = GraphicsContext::create(GraphicsBackend::OpenGL);
+// Test Graphics factory creates OpenGL context by default
+TEST(GraphicsTest, FactoryCreatesOpenGL) {
+    Graphics* context = Graphics::createDefault(GraphicsBackend::OpenGL);
     ASSERT_NE(context, nullptr);
 
     EXPECT_EQ(context->getBackend(), GraphicsBackend::OpenGL);

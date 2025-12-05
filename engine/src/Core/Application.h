@@ -1,13 +1,19 @@
 #pragma once
 
+/// Pina Engine - Application Base Class
+/// Games and samples derive from this class
+
 #include "Export.h"
 #include "Memory.h"
+#include "Context.h"
 #include <string>
 
 namespace Pina {
 
 class Window;
-class GraphicsContext;
+class Graphics;
+class Input;
+class UISubsystem;
 
 /// Application configuration
 struct PINA_API ApplicationConfig {
@@ -32,14 +38,29 @@ public:
     virtual ~Application();
 
     /// Run the application main loop
-    /// Returns exit code (uses m_config)
     int run();
 
-    /// Get the application window
-    Window* getWindow() const { return m_window.get(); }
+    /// Request application to quit
+    void quit() { m_running = false; }
 
-    /// Get the graphics context
-    GraphicsContext* getContext() const { return m_context.get(); }
+    // ========================================================================
+    // Subsystem Access
+    // ========================================================================
+
+    /// Get the engine context (subsystem registry)
+    Context* getContext() { return m_context.get(); }
+
+    /// Get a subsystem by type
+    template<typename T>
+    T* getSubsystem() const {
+        return m_context ? m_context->getSubsystem<T>() : nullptr;
+    }
+
+    /// Convenience accessors for common subsystems
+    Window* getWindow() const;
+    Graphics* getGraphics() const;
+    Input* getInput() const;
+    UISubsystem* getUI() const;
 
 protected:
     /// Application configuration - set in subclass constructor
@@ -54,6 +75,9 @@ protected:
     /// Called every frame for rendering
     virtual void onRender() {}
 
+    /// Called every frame for UI rendering (after onRender, before swap)
+    virtual void onRenderUI() {}
+
     /// Called before shutdown
     virtual void onShutdown() {}
 
@@ -61,8 +85,9 @@ protected:
     virtual void onResize(int width, int height) { (void)width; (void)height; }
 
 private:
-    UNIQUE<Window> m_window;
-    UNIQUE<GraphicsContext> m_context;
+    void createSubsystems();
+
+    UNIQUE<Context> m_context;
     bool m_running = false;
 };
 

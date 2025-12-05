@@ -1,6 +1,6 @@
 #pragma once
 
-#include "../GraphicsContext.h"
+#include "../Graphics.h"
 
 #ifdef __OBJC__
 @class NSOpenGLContext;
@@ -13,17 +13,17 @@ typedef void NSOpenGLPixelFormat;
 namespace Pina {
 
 /// macOS OpenGL context implementation using NSOpenGLContext
-class CocoaGLContext : public GraphicsContext {
+class CocoaGLContext : public Graphics {
 public:
     CocoaGLContext();
     ~CocoaGLContext() override;
 
-    bool create(Window* window, const ContextConfig& config) override;
+    bool create(Window* window, const GraphicsConfig& config) override;
     void destroy() override;
     void makeCurrent() override;
     void swapBuffers() override;
     void setVSync(bool enabled) override;
-    void update() override;
+    void updateContext() override;
     GraphicsBackend getBackend() const override;
 
 private:
