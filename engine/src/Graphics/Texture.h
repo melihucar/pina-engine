@@ -72,7 +72,17 @@ public:
     /// @return Loaded texture, or nullptr on failure
     static UNIQUE<Texture> load(GraphicsDevice* device, const std::string& path);
 
-    /// Load texture from memory
+    /// Load texture from compressed image data in memory (PNG, JPG, etc.)
+    /// Used for embedded textures in GLB files
+    /// @param device Graphics device to create texture on
+    /// @param data Compressed image data (PNG, JPG, etc.)
+    /// @param dataSize Size of the compressed data in bytes
+    /// @return Loaded texture, or nullptr on failure
+    static UNIQUE<Texture> loadFromMemory(GraphicsDevice* device,
+                                          const unsigned char* data,
+                                          uint32_t dataSize);
+
+    /// Create texture from raw pixel data
     /// @param device Graphics device to create texture on
     /// @param data Raw pixel data (RGB or RGBA)
     /// @param width Image width in pixels
@@ -84,6 +94,17 @@ public:
                                   uint32_t width,
                                   uint32_t height,
                                   uint32_t channels);
+
+    /// Create texture from RGBA pixel data (convenience alias)
+    /// @param device Graphics device to create texture on
+    /// @param data Raw RGBA pixel data (4 bytes per pixel)
+    /// @param width Image width in pixels
+    /// @param height Image height in pixels
+    /// @return Created texture, or nullptr on failure
+    static UNIQUE<Texture> createFromRGBA(GraphicsDevice* device,
+                                          const unsigned char* data,
+                                          uint32_t width,
+                                          uint32_t height);
 };
 
 } // namespace Pina
