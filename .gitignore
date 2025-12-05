@@ -30,6 +30,12 @@ _deps/
 .DS_Store
 Thumbs.db
 
+# ImGui
+imgui.ini
+
+# Large binary files
+*.zip
+
 # Editor backups
 *~
 *.swp
