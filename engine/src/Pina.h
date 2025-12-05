@@ -13,6 +13,8 @@
 #include "Core/Subsystem.h"
 #include "Core/Context.h"
 #include "Core/Application.h"
+#include "Core/Event.h"
+#include "Core/EventDispatcher.h"
 
 // Platform
 #include "Platform/Window.h"
@@ -21,6 +23,7 @@
 // Input
 #include "Input/KeyCodes.h"
 #include "Input/Input.h"
+#include "Input/InputEvents.h"
 
 // Graphics
 #include "Graphics/GraphicsDevice.h"

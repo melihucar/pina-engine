@@ -1,5 +1,6 @@
 #include "Application.h"
 #include "Context.h"
+#include "EventDispatcher.h"
 #include "../Platform/Window.h"
 #include "../Platform/Graphics.h"
 #include "../Input/Input.h"
@@ -35,7 +36,15 @@ UISubsystem* Application::getUI() const {
     return m_context ? m_context->getSubsystem<UISubsystem>() : nullptr;
 }
 
+EventDispatcher* Application::getEventDispatcher() const {
+    return m_context ? m_context->getSubsystem<EventDispatcher>() : nullptr;
+}
+
 void Application::createSubsystems() {
+    // Create event dispatcher FIRST (other subsystems may subscribe during init)
+    auto* eventDispatcher = new EventDispatcher();
+    m_context->registerSubsystem<EventDispatcher>(eventDispatcher);
+
     // Create window (uses platform default)
     Window* window = Window::createDefault();
     m_context->registerSubsystem<Window>(window);
@@ -58,6 +67,7 @@ void Application::createSubsystems() {
     auto* cocoaInput = dynamic_cast<CocoaInput*>(input);
     if (cocoaWindow && cocoaInput) {
         cocoaWindow->setInputHandler(cocoaInput);
+        cocoaInput->setEventDispatcher(eventDispatcher);
     }
 #endif
 }

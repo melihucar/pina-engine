@@ -14,6 +14,7 @@ class Window;
 class Graphics;
 class Input;
 class UISubsystem;
+class EventDispatcher;
 
 /// Application configuration
 struct PINA_API ApplicationConfig {
@@ -61,6 +62,7 @@ public:
     Graphics* getGraphics() const;
     Input* getInput() const;
     UISubsystem* getUI() const;
+    EventDispatcher* getEventDispatcher() const;
 
 protected:
     /// Application configuration - set in subclass constructor

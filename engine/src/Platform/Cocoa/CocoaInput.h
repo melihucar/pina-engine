@@ -17,6 +17,7 @@ typedef void NSView;
 namespace Pina {
 
 class Window;
+class EventDispatcher;
 
 /// macOS Cocoa input implementation
 class CocoaInput : public Input {
@@ -89,6 +90,13 @@ public:
     static Key translateKeyCode(unsigned short keyCode);
     static KeyModifier translateModifiers(unsigned int nsModifiers);
 
+    // ========================================================================
+    // Event System Integration
+    // ========================================================================
+
+    /// Set the event dispatcher for emitting input events
+    void setEventDispatcher(EventDispatcher* dispatcher);
+
 protected:
     void endFrame() override;
 
@@ -121,6 +129,9 @@ private:
 
     // Focus state
     bool m_hasFocus = true;
+
+    // Event dispatcher for emitting events
+    EventDispatcher* m_eventDispatcher = nullptr;
 };
 
 } // namespace Pina

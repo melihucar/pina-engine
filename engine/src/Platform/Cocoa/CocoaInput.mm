@@ -2,6 +2,9 @@
 
 #import "CocoaInput.h"
 #import "../Window.h"
+#import "../../Core/EventDispatcher.h"
+#import "../../Core/Context.h"
+#import "../../Input/InputEvents.h"
 #import <Cocoa/Cocoa.h>
 #import <Carbon/Carbon.h>  // For kVK_ virtual key codes
 
@@ -170,6 +173,14 @@ bool CocoaInput::hasFocus() const {
 }
 
 // ============================================================================
+// Event System Integration
+// ============================================================================
+
+void CocoaInput::setEventDispatcher(EventDispatcher* dispatcher) {
+    m_eventDispatcher = dispatcher;
+}
+
+// ============================================================================
 // Event Processing (called by CocoaWindow)
 // ============================================================================
 
@@ -177,7 +188,14 @@ void CocoaInput::processKeyDown(unsigned short keyCode) {
     Key key = translateKeyCode(keyCode);
     size_t index = static_cast<size_t>(key);
     if (index < KEY_COUNT) {
+        bool wasDown = m_keyCurrentState[index];
         m_keyCurrentState[index] = true;
+
+        // Emit key pressed event
+        if (m_eventDispatcher) {
+            KeyPressedEvent event(key, m_modifiers, wasDown);
+            m_eventDispatcher->dispatch(event);
+        }
     }
 }
 
@@ -186,6 +204,12 @@ void CocoaInput::processKeyUp(unsigned short keyCode) {
     size_t index = static_cast<size_t>(key);
     if (index < KEY_COUNT) {
         m_keyCurrentState[index] = false;
+
+        // Emit key released event
+        if (m_eventDispatcher) {
+            KeyReleasedEvent event(key, m_modifiers);
+            m_eventDispatcher->dispatch(event);
+        }
     }
 }
 
@@ -197,6 +221,12 @@ void CocoaInput::processMouseDown(MouseButton button) {
     size_t index = static_cast<size_t>(button);
     if (index < BUTTON_COUNT) {
         m_mouseCurrentState[index] = true;
+
+        // Emit mouse button pressed event
+        if (m_eventDispatcher) {
+            MouseButtonPressedEvent event(button, m_mousePosition, m_modifiers);
+            m_eventDispatcher->dispatch(event);
+        }
     }
 }
 
@@ -204,24 +234,50 @@ void CocoaInput::processMouseUp(MouseButton button) {
     size_t index = static_cast<size_t>(button);
     if (index < BUTTON_COUNT) {
         m_mouseCurrentState[index] = false;
+
+        // Emit mouse button released event
+        if (m_eventDispatcher) {
+            MouseButtonReleasedEvent event(button, m_mousePosition, m_modifiers);
+            m_eventDispatcher->dispatch(event);
+        }
     }
 }
 
 void CocoaInput::processMouseMove(float x, float y) {
+    glm::vec2 oldPosition = m_mousePosition;
     m_mousePosition.x = x;
     m_mousePosition.y = y;
+    glm::vec2 delta = m_mousePosition - oldPosition;
+
+    // Emit mouse moved event
+    if (m_eventDispatcher) {
+        MouseMovedEvent event(m_mousePosition, delta);
+        m_eventDispatcher->dispatch(event);
+    }
 }
 
 void CocoaInput::processScroll(float deltaX, float deltaY) {
     m_scrollDelta.x += deltaX;
     m_scrollDelta.y += deltaY;
+
+    // Emit mouse scrolled event
+    if (m_eventDispatcher) {
+        MouseScrolledEvent event(glm::vec2(deltaX, deltaY), m_mousePosition);
+        m_eventDispatcher->dispatch(event);
+    }
 }
 
-void CocoaInput::processFocusChange(bool hasFocus) {
-    m_hasFocus = hasFocus;
+void CocoaInput::processFocusChange(bool focus) {
+    m_hasFocus = focus;
+
+    // Emit window focus event
+    if (m_eventDispatcher) {
+        WindowFocusEvent event(focus);
+        m_eventDispatcher->dispatch(event);
+    }
 
     // Reset all keys when losing focus to prevent stuck keys
-    if (!hasFocus) {
+    if (!focus) {
         m_keyCurrentState.fill(false);
         m_mouseCurrentState.fill(false);
     }
