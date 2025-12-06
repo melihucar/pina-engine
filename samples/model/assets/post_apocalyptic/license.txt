@@ -1,0 +1,11 @@
+Model Information:
+* title:	Post-apocalyptic Vehicle
+* source:	https://sketchfab.com/3d-models/post-apocalyptic-vehicle-c2d68d2e66d54c3cb1a69918e977d71b
+* author:	MKoegler3D (https://sketchfab.com/MKoegler3D)
+
+Model License:
+* license type:	CC-BY-NC-4.0 (http://creativecommons.org/licenses/by-nc/4.0/)
+* requirements:	Author must be credited. No commercial use.
+
+If you use this 3D model in your project be sure to copy paste this credit wherever you share it:
+This work is based on "Post-apocalyptic Vehicle" (https://sketchfab.com/3d-models/post-apocalyptic-vehicle-c2d68d2e66d54c3cb1a69918e977d71b) by MKoegler3D (https://sketchfab.com/MKoegler3D) licensed under CC-BY-NC-4.0 (http://creativecommons.org/licenses/by-nc/4.0/)

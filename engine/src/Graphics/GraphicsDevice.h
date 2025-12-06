@@ -74,6 +74,9 @@ public:
     /// Enable/disable wireframe rendering mode
     virtual void setWireframe(bool enabled) = 0;
 
+    /// Enable/disable depth buffer writes
+    virtual void setDepthWrite(bool enabled) = 0;
+
     // ========================================================================
     // Drawing
     // ========================================================================

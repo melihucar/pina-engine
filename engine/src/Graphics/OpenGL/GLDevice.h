@@ -32,6 +32,7 @@ public:
     void setDepthTest(bool enabled) override;
     void setBlending(bool enabled) override;
     void setWireframe(bool enabled) override;
+    void setDepthWrite(bool enabled) override;
 
     // Drawing
     void draw(VertexArray* vao, uint32_t vertexCount) override;

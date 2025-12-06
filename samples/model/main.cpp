@@ -7,9 +7,9 @@
 #include <cstdio>
 
 enum class ModelType {
-    Backpack,
-    CarScene,
-    PostApocalypticVehicle
+    Gameboy,
+    PostApocalyptic,
+    Vehicle
 };
 
 enum class CameraMode {
@@ -48,9 +48,8 @@ protected:
         // Load initial model
         loadModel(m_selectedModel);
 
-        // Create floor
-        m_floor = Pina::QuadMesh::create(m_device.get(), 10.0f, 10.0f);
-        m_floorMaterial = Pina::Material::createMatte(Pina::Color(0.3f, 0.3f, 0.35f));
+        // Create light cube for visualization
+        m_lightCube = Pina::CubeMesh::create(m_device.get(), 0.15f);
 
         // Setup camera with initial position
         m_camera.setPerspective(45.0f, 1280.0f / 720.0f, 0.1f, 100.0f);
@@ -81,14 +80,14 @@ protected:
     void loadModel(ModelType type) {
         const char* path = nullptr;
         switch (type) {
-            case ModelType::Backpack:
-                path = "assets/teapot.obj";  // Simple single-mesh test
+            case ModelType::Gameboy:
+                path = "assets/gameboy/scene.gltf";
                 break;
-            case ModelType::CarScene:
-                path = "assets/car_scene/scene.gltf";
+            case ModelType::PostApocalyptic:
+                path = "assets/post_apocalyptic/scene.gltf";
                 break;
-            case ModelType::PostApocalypticVehicle:
-                path = "assets/post_apocalyptic_vehicle/scene.gltf";
+            case ModelType::Vehicle:
+                path = "assets/vehicle/scene.gltf";
                 break;
         }
 
@@ -122,6 +121,14 @@ protected:
         m_modelPosition = glm::vec3(0.0f);
         m_modelRotation = glm::vec3(0.0f);
         m_autoRotation = 0.0f;
+
+        // Reset camera to best view of the model
+        if (m_model && m_orbitCamera) {
+            glm::vec3 center = m_model->getCenter() * m_modelScale;
+            center.y += m_modelBaseY;
+            float size = m_model->getBoundingBox().getMaxDimension() * m_modelScale;
+            m_orbitCamera->focusOn(center, size);
+        }
     }
 
     void setupLights() {
@@ -212,7 +219,7 @@ protected:
             activeShader->setInt("uWireframe", m_wireframe ? 1 : 0);
         }
 
-        // Enable blending for transparent materials
+        // Enable blending for alpha transparency
         m_device->setBlending(true);
 
         // Draw model
@@ -249,24 +256,46 @@ protected:
             m_fallbackCube->draw();
         }
 
-        // Disable blending for opaque floor
+        // Disable blending for subsequent rendering
         m_device->setBlending(false);
 
-        // Draw floor (always with standard shader)
-        m_shader->bind();
-        m_shader->setMat4("uView", m_camera.getViewMatrix());
-        m_shader->setMat4("uProjection", m_camera.getProjectionMatrix());
-        m_lightManager.uploadToShader(m_shader.get());
-        m_lightManager.uploadMaterial(m_shader.get(), m_floorMaterial);
-        {
-            glm::mat4 model = glm::mat4(1.0f);
-            model = glm::translate(model, glm::vec3(0.0f, 0.0f, 0.0f));
-            model = glm::rotate(model, glm::radians(-90.0f), glm::vec3(1.0f, 0.0f, 0.0f));
+        // Draw light cubes (point lights only)
+        if (m_lightCube) {
+            m_shader->bind();
+            m_shader->setMat4("uView", m_camera.getViewMatrix());
+            m_shader->setMat4("uProjection", m_camera.getProjectionMatrix());
+            m_shader->setInt("uWireframe", 0);
+            m_lightManager.uploadToShader(m_shader.get());
 
-            glm::mat3 normalMatrix = glm::transpose(glm::inverse(glm::mat3(model)));
-            m_shader->setMat4("uModel", model);
-            m_shader->setMat3("uNormalMatrix", normalMatrix);
-            m_floor->draw();
+            // Draw front fill light cube
+            {
+                Pina::Vector3 pos = m_pointLight.getPosition();
+                glm::mat4 model = glm::translate(glm::mat4(1.0f), glm::vec3(pos.x, pos.y, pos.z));
+                glm::mat3 normalMatrix = glm::transpose(glm::inverse(glm::mat3(model)));
+                m_shader->setMat4("uModel", model);
+                m_shader->setMat3("uNormalMatrix", normalMatrix);
+
+                Pina::Color lightColor = m_pointLight.getColor();
+                auto lightMat = Pina::Material::createMatte(Pina::Color::white());
+                lightMat.setEmissive(lightColor);
+                m_lightManager.uploadMaterial(m_shader.get(), lightMat);
+                m_lightCube->draw();
+            }
+
+            // Draw back fill light cube
+            {
+                Pina::Vector3 pos = m_backLight.getPosition();
+                glm::mat4 model = glm::translate(glm::mat4(1.0f), glm::vec3(pos.x, pos.y, pos.z));
+                glm::mat3 normalMatrix = glm::transpose(glm::inverse(glm::mat3(model)));
+                m_shader->setMat4("uModel", model);
+                m_shader->setMat3("uNormalMatrix", normalMatrix);
+
+                Pina::Color lightColor = m_backLight.getColor();
+                auto lightMat = Pina::Material::createMatte(Pina::Color::white());
+                lightMat.setEmissive(lightColor);
+                m_lightManager.uploadMaterial(m_shader.get(), lightMat);
+                m_lightCube->draw();
+            }
         }
 
         // Reset to solid mode for UI rendering
@@ -286,17 +315,13 @@ protected:
             // Model Selection
             if (CollapsingHeader header("Model Selection", Pina::UITreeNodeFlags::DefaultOpen); header) {
                 int modelIdx = static_cast<int>(m_selectedModel);
-                Combo modelCombo("Model", &modelIdx, "Backpack\0Car Scene\0Post-Apocalyptic Vehicle\0");
+                Combo modelCombo("Model", &modelIdx, "Gameboy\0Post-Apocalyptic\0Vehicle\0");
                 if (modelCombo.changed()) {
                     ModelType newModel = static_cast<ModelType>(modelIdx);
                     if (newModel != m_selectedModel) {
                         m_selectedModel = newModel;
                         loadModel(m_selectedModel);
                     }
-                }
-
-                if (m_selectedModel == ModelType::CarScene && !m_model) {
-                    Text{Pina::Color::yellow(), "Extract car_scene.zip first"};
                 }
             }
 
@@ -397,7 +422,7 @@ protected:
         m_pbrShader.reset();
         m_model.reset();
         m_fallbackCube.reset();
-        m_floor.reset();
+        m_lightCube.reset();
         m_device.reset();
     }
 
@@ -407,16 +432,13 @@ private:
     Pina::UNIQUE<Pina::Shader> m_pbrShader;
     Pina::UNIQUE<Pina::Model> m_model;
     Pina::UNIQUE<Pina::CubeMesh> m_fallbackCube;
-    Pina::UNIQUE<Pina::QuadMesh> m_floor;
+    Pina::UNIQUE<Pina::CubeMesh> m_lightCube;
     Pina::Camera m_camera;
 
     // Camera controllers
     std::unique_ptr<Pina::OrbitCamera> m_orbitCamera;
     std::unique_ptr<Pina::FreelookCamera> m_freelookCamera;
     CameraMode m_cameraMode = CameraMode::Orbit;
-
-    // Materials
-    Pina::Material m_floorMaterial;
 
     // Lights
     Pina::LightManager m_lightManager;
@@ -436,7 +458,7 @@ private:
     bool m_usePBR = false;
 
     // Model selection
-    ModelType m_selectedModel = ModelType::CarScene;
+    ModelType m_selectedModel = ModelType::Gameboy;
 
     // Model transform controls
     glm::vec3 m_modelPosition{0.0f};

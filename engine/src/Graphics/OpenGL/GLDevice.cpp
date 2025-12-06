@@ -16,6 +16,11 @@ GLDevice::GLDevice() {
 
     // Enable depth testing by default
     glEnable(GL_DEPTH_TEST);
+
+    // Enable backface culling by default
+    glEnable(GL_CULL_FACE);
+    glCullFace(GL_BACK);
+    glFrontFace(GL_CCW);
 }
 
 GLDevice::~GLDevice() {
@@ -98,6 +103,10 @@ void GLDevice::setWireframe(bool enabled) {
     } else {
         glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
     }
+}
+
+void GLDevice::setDepthWrite(bool enabled) {
+    glDepthMask(enabled ? GL_TRUE : GL_FALSE);
 }
 
 // ============================================================================
