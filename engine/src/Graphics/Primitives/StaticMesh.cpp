@@ -19,15 +19,16 @@ StaticMesh::StaticMesh(GraphicsDevice* device,
     size_t vertexSize = 8 * sizeof(float);
     size_t bufferSize = vertexCount * vertexSize;
 
-    // Create vertex buffer
-    m_vbo = m_device->createVertexBuffer(vertices, bufferSize);
-
-    // Create index buffer
-    m_ibo = m_device->createIndexBuffer(indices, indexCount);
-
-    // Create vertex array and set up layout
+    // IMPORTANT: Create VAO first to avoid state contamination!
+    // GLIndexBuffer binds to GL_ELEMENT_ARRAY_BUFFER which is stored in VAO state.
+    // If we create IBO before VAO, it binds to the previously active VAO.
     m_vao = m_device->createVertexArray();
 
+    // Now create buffers - IBO binding will go to our new VAO
+    m_vbo = m_device->createVertexBuffer(vertices, bufferSize);
+    m_ibo = m_device->createIndexBuffer(indices, indexCount);
+
+    // Set up vertex layout and attach buffers
     VertexLayout layout;
     layout.push("aPosition", ShaderDataType::Float3);
     layout.push("aNormal", ShaderDataType::Float3);
@@ -54,6 +55,7 @@ UNIQUE<StaticMesh> StaticMesh::create(GraphicsDevice* device,
     // Each vertex has 8 floats (pos + normal + texcoord)
     uint32_t vertexCount = static_cast<uint32_t>(vertices.size() / 8);
     uint32_t indexCount = static_cast<uint32_t>(indices.size());
+
     return create(device, vertices.data(), vertexCount, indices.data(), indexCount);
 }
 

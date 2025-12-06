@@ -41,9 +41,20 @@ void GLVertexBuffer::setData(const void* data, size_t size) {
 GLIndexBuffer::GLIndexBuffer(const uint32_t* indices, uint32_t count)
     : m_count(count)
 {
+    // Save currently bound VAO to restore later
+    GLint previousVAO = 0;
+    glGetIntegerv(GL_VERTEX_ARRAY_BINDING, &previousVAO);
+
+    // Unbind VAO to prevent contaminating its GL_ELEMENT_ARRAY_BUFFER binding
+    // (GL_ELEMENT_ARRAY_BUFFER binding is stored as part of VAO state)
+    glBindVertexArray(0);
+
     glGenBuffers(1, &m_bufferID);
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, m_bufferID);
     glBufferData(GL_ELEMENT_ARRAY_BUFFER, count * sizeof(uint32_t), indices, GL_STATIC_DRAW);
+
+    // Restore previous VAO
+    glBindVertexArray(previousVAO);
 }
 
 GLIndexBuffer::~GLIndexBuffer() {
