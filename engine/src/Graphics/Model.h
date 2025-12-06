@@ -138,7 +138,6 @@ public:
 
 private:
     friend class AssimpLoader;
-    friend class TinyGLTFLoader;
 
     Model() = default;
 

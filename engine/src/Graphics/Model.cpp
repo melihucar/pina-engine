@@ -2,7 +2,6 @@
 
 #include "Model.h"
 #include "Loaders/AssimpLoader.h"
-#include "Loaders/TinyGLTFLoader.h"
 #include <iostream>
 #include <algorithm>
 #include <cctype>
