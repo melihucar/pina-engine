@@ -84,6 +84,9 @@ public:
     void setOpacity(float opacity) { m_opacity = opacity; }
     float getOpacity() const { return m_opacity; }
 
+    /// Check if material is transparent (opacity < 1.0 or has opacity map)
+    bool isTransparent() const { return m_opacity < 1.0f || m_opacityMap != nullptr; }
+
     // ========================================================================
     // Blinn-Phong Texture Maps
     // ========================================================================

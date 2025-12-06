@@ -63,11 +63,22 @@ public:
     /// @return Loaded model, or nullptr on failure
     static UNIQUE<Model> load(GraphicsDevice* device, const std::string& path);
 
-    /// Draw the model
+    /// Draw the model (all meshes)
     /// Binds each mesh's material and draws it
     /// @param shader Bound shader to upload material uniforms to
     /// @param lightManager Light manager for material uploads
     void draw(Shader* shader, LightManager* lightManager);
+
+    /// Draw only opaque meshes (materials with opacity >= 1.0)
+    /// Use with depth write enabled for correct transparency rendering
+    void drawOpaque(Shader* shader, LightManager* lightManager);
+
+    /// Draw only transparent meshes (materials with opacity < 1.0)
+    /// Use with depth write disabled for correct transparency rendering
+    void drawTransparent(Shader* shader, LightManager* lightManager);
+
+    /// Check if model has any transparent materials
+    bool hasTransparentMaterials() const;
 
     // ========================================================================
     // Mesh Access

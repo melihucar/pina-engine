@@ -370,11 +370,24 @@ Material AssimpLoader::processMaterial(aiMaterial* mat, LoadContext& ctx) {
         material.setMetallic(metallicFactor);
         material.setRoughness(roughnessFactor);
 
-        // Opacity
+        // Opacity - check both explicit opacity and glTF alphaMode
         float opacity = 1.0f;
-        if (mat->Get(AI_MATKEY_OPACITY, opacity) == AI_SUCCESS) {
-            material.setOpacity(opacity);
+        mat->Get(AI_MATKEY_OPACITY, opacity);
+
+        // Check glTF alpha mode (BLEND mode means transparent)
+        aiString alphaMode;
+        if (mat->Get(AI_MATKEY_GLTF_ALPHAMODE, alphaMode) == AI_SUCCESS) {
+            std::string alphaModeStr = alphaMode.C_Str();
+            if (alphaModeStr == "BLEND") {
+                // For BLEND mode, use alpha from base color or set to semi-transparent
+                // so isTransparent() returns true
+                if (opacity >= 1.0f) {
+                    opacity = 0.99f;  // Mark as transparent for sorting
+                }
+                std::cout << "    -> Transparent material (alphaMode: BLEND)" << std::endl;
+            }
         }
+        material.setOpacity(opacity);
 
         // Albedo texture
         Texture* albedoMap = loadMaterialTexture(mat, aiTextureType_BASE_COLOR, ctx);

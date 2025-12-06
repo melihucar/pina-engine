@@ -7,9 +7,9 @@
 #include <cstdio>
 
 enum class ModelType {
-    Gameboy,
-    PostApocalyptic,
-    Vehicle
+    Winter,
+    Vehicle,
+    PostApocalyptic
 };
 
 enum class CameraMode {
@@ -45,9 +45,6 @@ protected:
             std::cerr << "Failed to compile PBR shader!" << std::endl;
         }
 
-        // Load initial model
-        loadModel(m_selectedModel);
-
         // Create light cube for visualization
         m_lightCube = Pina::CubeMesh::create(m_device.get(), 0.15f);
 
@@ -55,7 +52,7 @@ protected:
         m_camera.setPerspective(45.0f, 1280.0f / 720.0f, 0.1f, 100.0f);
         m_camera.lookAt(m_cameraPos, glm::vec3(0.0f), glm::vec3(0.0f, 1.0f, 0.0f));
 
-        // Setup camera controllers
+        // Setup camera controllers BEFORE loading model (so focusOn works)
         m_orbitCamera = std::make_unique<Pina::OrbitCamera>(&m_camera);
         m_orbitCamera->setTarget(glm::vec3(0.0f, 1.0f, 0.0f));
         m_orbitCamera->setDistance(5.0f);
@@ -63,6 +60,9 @@ protected:
 
         m_freelookCamera = std::make_unique<Pina::FreelookCamera>(&m_camera);
         m_freelookCamera->setMoveSpeed(5.0f);
+
+        // Load initial model (after camera controllers are created)
+        loadModel(m_selectedModel);
 
         // Setup lights
         setupLights();
@@ -80,14 +80,14 @@ protected:
     void loadModel(ModelType type) {
         const char* path = nullptr;
         switch (type) {
-            case ModelType::Gameboy:
-                path = "assets/gameboy/scene.gltf";
-                break;
-            case ModelType::PostApocalyptic:
-                path = "assets/post_apocalyptic/scene.gltf";
+            case ModelType::Winter:
+                path = "assets/winter/scene.gltf";
                 break;
             case ModelType::Vehicle:
                 path = "assets/vehicle/scene.gltf";
+                break;
+            case ModelType::PostApocalyptic:
+                path = "assets/post_apocalyptic/scene.gltf";
                 break;
         }
 
@@ -157,6 +157,15 @@ protected:
     }
 
     void onUpdate(float deltaTime) override {
+        // Update FPS counter
+        m_fpsAccumulator += deltaTime;
+        m_frameCount++;
+        if (m_fpsAccumulator >= 0.5f) {
+            m_fps = m_frameCount / m_fpsAccumulator;
+            m_fpsAccumulator = 0.0f;
+            m_frameCount = 0;
+        }
+
         auto* input = getInput();
         if (!input) return;
 
@@ -219,10 +228,7 @@ protected:
             activeShader->setInt("uWireframe", m_wireframe ? 1 : 0);
         }
 
-        // Enable blending for alpha transparency
-        m_device->setBlending(true);
-
-        // Draw model
+        // Draw model with two-pass rendering for correct transparency
         if (m_model) {
             glm::mat4 model = glm::mat4(1.0f);
             // Position offset (including floor placement)
@@ -240,7 +246,17 @@ protected:
             activeShader->setMat4("uModel", model);
             activeShader->setMat3("uNormalMatrix", normalMatrix);
 
-            m_model->draw(activeShader, &m_lightManager);
+            // Pass 1: Draw opaque meshes with depth write enabled (default)
+            m_model->drawOpaque(activeShader, &m_lightManager);
+
+            // Pass 2: Draw transparent meshes with blending and depth write disabled
+            if (m_model->hasTransparentMaterials()) {
+                m_device->setBlending(true);
+                m_device->setDepthWrite(false);
+                m_model->drawTransparent(activeShader, &m_lightManager);
+                m_device->setDepthWrite(true);
+                m_device->setBlending(false);
+            }
         } else if (m_fallbackCube) {
             // Draw fallback cube
             glm::mat4 model = glm::mat4(1.0f);
@@ -255,9 +271,6 @@ protected:
             m_lightManager.uploadMaterial(activeShader, fallbackMat);
             m_fallbackCube->draw();
         }
-
-        // Disable blending for subsequent rendering
-        m_device->setBlending(false);
 
         // Draw light cubes (point lights only)
         if (m_lightCube) {
@@ -307,6 +320,24 @@ protected:
     void onRenderUI() override {
         using namespace Pina::Widgets;
 
+        // FPS counter in top right corner
+        {
+            auto* window = getWindow();
+            int windowWidth = window ? window->getWidth() : 1280;
+            setNextWindowPos(Pina::Vector2(static_cast<float>(windowWidth) - 100.0f, 10.0f));
+            Window fpsWindow("##fps", nullptr,
+                Pina::UIWindowFlags::NoTitleBar |
+                Pina::UIWindowFlags::NoResize |
+                Pina::UIWindowFlags::NoMove |
+                Pina::UIWindowFlags::NoBackground |
+                Pina::UIWindowFlags::AlwaysAutoResize);
+            if (fpsWindow) {
+                char fpsBuf[32];
+                snprintf(fpsBuf, sizeof(fpsBuf), "FPS: %.0f", m_fps);
+                Text{Pina::Color::white(), fpsBuf};
+            }
+        }
+
         Pina::Color green = Pina::Color::green();
 
         setNextWindowSize(Pina::Vector2(300, 0));
@@ -315,7 +346,7 @@ protected:
             // Model Selection
             if (CollapsingHeader header("Model Selection", Pina::UITreeNodeFlags::DefaultOpen); header) {
                 int modelIdx = static_cast<int>(m_selectedModel);
-                Combo modelCombo("Model", &modelIdx, "Gameboy\0Post-Apocalyptic\0Vehicle\0");
+                Combo modelCombo("Model", &modelIdx, "Winter\0Vehicle\0Post-Apocalyptic\0");
                 if (modelCombo.changed()) {
                     ModelType newModel = static_cast<ModelType>(modelIdx);
                     if (newModel != m_selectedModel) {
@@ -458,7 +489,12 @@ private:
     bool m_usePBR = false;
 
     // Model selection
-    ModelType m_selectedModel = ModelType::Gameboy;
+    ModelType m_selectedModel = ModelType::Winter;
+
+    // FPS tracking
+    float m_fps = 0.0f;
+    float m_fpsAccumulator = 0.0f;
+    int m_frameCount = 0;
 
     // Model transform controls
     glm::vec3 m_modelPosition{0.0f};
