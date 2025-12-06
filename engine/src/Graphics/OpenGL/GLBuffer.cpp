@@ -42,8 +42,8 @@ GLIndexBuffer::GLIndexBuffer(const uint32_t* indices, uint32_t count)
     : m_count(count)
 {
     // Save currently bound VAO to restore later
-    GLint previousVAO = 0;
-    glGetIntegerv(GL_VERTEX_ARRAY_BINDING, &previousVAO);
+    //GLint previousVAO = 0;
+    //glGetIntegerv(GL_VERTEX_ARRAY_BINDING, &previousVAO);
 
     // Unbind VAO to prevent contaminating its GL_ELEMENT_ARRAY_BUFFER binding
     // (GL_ELEMENT_ARRAY_BUFFER binding is stored as part of VAO state)
@@ -54,7 +54,7 @@ GLIndexBuffer::GLIndexBuffer(const uint32_t* indices, uint32_t count)
     glBufferData(GL_ELEMENT_ARRAY_BUFFER, count * sizeof(uint32_t), indices, GL_STATIC_DRAW);
 
     // Restore previous VAO
-    glBindVertexArray(previousVAO);
+    glBindVertexArray(0);
 }
 
 GLIndexBuffer::~GLIndexBuffer() {
