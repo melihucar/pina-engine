@@ -1,13 +1,19 @@
 #include "EditorCamera.h"
 #include <Pina.h>
-#include <algorithm>
 
 namespace PinaEditor {
 
 EditorCamera::EditorCamera() {
     m_camera = std::make_unique<Pina::Camera>();
     m_camera->setPerspective(45.0f, 16.0f / 9.0f, 0.1f, 1000.0f);
-    updateCameraFromOrbit();
+
+    // Create controllers that share the same camera
+    m_orbitController = std::make_unique<Pina::OrbitCamera>(m_camera.get());
+    m_freelookController = std::make_unique<Pina::FreelookCamera>(m_camera.get());
+
+    // Set default orbit state
+    m_orbitController->setRotation(-90.0f, 20.0f);
+    m_orbitController->setDistance(5.0f);
 }
 
 EditorCamera::~EditorCamera() = default;
@@ -17,131 +23,83 @@ void EditorCamera::update(Pina::Input* input, float deltaTime) {
 
     switch (m_mode) {
         case Mode::Orbit:
-            updateOrbitMode(input, deltaTime);
+            m_orbitController->update(input, deltaTime);
             break;
         case Mode::Fly:
-            updateFlyMode(input, deltaTime);
+            m_freelookController->update(input, deltaTime);
             break;
     }
 }
 
-void EditorCamera::updateOrbitMode(Pina::Input* input, float deltaTime) {
-    (void)deltaTime;
+void EditorCamera::setMode(Mode mode) {
+    if (mode == m_mode) return;
 
-    glm::vec2 mousePos = input->getMousePosition();
-    glm::vec2 mouseDelta = mousePos - m_lastMousePos;
-
-    // Middle mouse button: pan
-    if (input->isMouseButtonDown(Pina::MouseButton::Middle)) {
-        if (!m_isPanning && !m_isOrbiting) {
-            m_isPanning = true;
-        }
-
-        if (m_isPanning) {
-            // Pan in camera space - calculate right/up from camera orientation
-            glm::vec3 forward = glm::normalize(m_orbitTarget - m_camera->getPosition());
-            glm::vec3 right = glm::normalize(glm::cross(forward, glm::vec3(0.0f, 1.0f, 0.0f)));
-            glm::vec3 up = glm::normalize(glm::cross(right, forward));
-            float panSpeed = m_orbitDistance * 0.002f;
-            m_orbitTarget -= right * mouseDelta.x * panSpeed;
-            m_orbitTarget += up * mouseDelta.y * panSpeed;
-            updateCameraFromOrbit();
-        }
+    // Transfer state when switching modes
+    if (mode == Mode::Orbit) {
+        transferStateToOrbit();
     } else {
-        m_isPanning = false;
+        transferStateToFreelook();
     }
 
-    // Right mouse button: orbit
-    if (input->isMouseButtonDown(Pina::MouseButton::Right)) {
-        if (!m_isOrbiting && !m_isPanning) {
-            m_isOrbiting = true;
-        }
-
-        if (m_isOrbiting) {
-            m_yaw += mouseDelta.x * m_rotateSpeed;
-            m_pitch += mouseDelta.y * m_rotateSpeed;  // Drag up = look up
-            m_pitch = std::clamp(m_pitch, -89.0f, 89.0f);
-            updateCameraFromOrbit();
-        }
-    } else {
-        m_isOrbiting = false;
-    }
-
-    // Mouse wheel: zoom
-    float scroll = input->getScrollDelta().y;
-    if (scroll != 0.0f) {
-        m_orbitDistance -= scroll * m_zoomSpeed;
-        m_orbitDistance = std::max(m_orbitDistance, 0.1f);
-        updateCameraFromOrbit();
-    }
-
-    m_lastMousePos = mousePos;
+    m_mode = mode;
 }
 
-void EditorCamera::updateFlyMode(Pina::Input* input, float deltaTime) {
-    glm::vec2 mousePos = input->getMousePosition();
-    glm::vec2 mouseDelta = mousePos - m_lastMousePos;
+void EditorCamera::transferStateToOrbit() {
+    // When switching to orbit, preserve camera position and look toward origin
+    // Set yaw/pitch based on current camera orientation
+    glm::vec3 pos = m_camera->getPosition();
+    glm::vec3 target = glm::vec3(0.0f);
 
-    // Right mouse: look around
-    if (input->isMouseButtonDown(Pina::MouseButton::Right)) {
-        m_yaw += mouseDelta.x * m_rotateSpeed;
-        m_pitch += mouseDelta.y * m_rotateSpeed;  // Drag up = look up
-        m_pitch = std::clamp(m_pitch, -89.0f, 89.0f);
+    // Calculate distance and angles from position
+    glm::vec3 toCamera = pos - target;
+    float distance = glm::length(toCamera);
 
-        // Calculate direction from yaw/pitch
-        glm::vec3 front;
-        front.x = cos(glm::radians(m_yaw)) * cos(glm::radians(m_pitch));
-        front.y = sin(glm::radians(m_pitch));
-        front.z = sin(glm::radians(m_yaw)) * cos(glm::radians(m_pitch));
-        front = glm::normalize(front);
+    if (distance > 0.01f) {
+        toCamera = glm::normalize(toCamera);
+        float pitch = glm::degrees(asin(toCamera.y));
+        float yaw = glm::degrees(atan2(toCamera.z, toCamera.x));
 
-        glm::vec3 right = glm::normalize(glm::cross(front, glm::vec3(0.0f, 1.0f, 0.0f)));
-        glm::vec3 up = glm::normalize(glm::cross(right, front));
-
-        // WASD movement
-        glm::vec3 position = m_camera->getPosition();
-        float speed = m_moveSpeed * deltaTime;
-
-        if (input->isKeyDown(Pina::Key::W)) position += front * speed;
-        if (input->isKeyDown(Pina::Key::S)) position -= front * speed;
-        if (input->isKeyDown(Pina::Key::A)) position -= right * speed;
-        if (input->isKeyDown(Pina::Key::D)) position += right * speed;
-        if (input->isKeyDown(Pina::Key::Q)) position -= up * speed;
-        if (input->isKeyDown(Pina::Key::E)) position += up * speed;
-
-        m_camera->setPosition(position);
-        m_camera->lookAt(position, position + front, glm::vec3(0.0f, 1.0f, 0.0f));
+        m_orbitController->setTarget(target);
+        m_orbitController->setDistance(distance);
+        m_orbitController->setRotation(yaw, pitch);
     }
-
-    m_lastMousePos = mousePos;
 }
 
-void EditorCamera::updateCameraFromOrbit() {
-    // Calculate camera position from spherical coordinates
-    float yawRad = glm::radians(m_yaw);
-    float pitchRad = glm::radians(m_pitch);
-
-    glm::vec3 position;
-    position.x = m_orbitTarget.x + m_orbitDistance * cos(pitchRad) * cos(yawRad);
-    position.y = m_orbitTarget.y + m_orbitDistance * sin(pitchRad);
-    position.z = m_orbitTarget.z + m_orbitDistance * cos(pitchRad) * sin(yawRad);
-
-    m_camera->setPosition(position);
-    m_camera->lookAt(position, m_orbitTarget, glm::vec3(0.0f, 1.0f, 0.0f));
+void EditorCamera::transferStateToFreelook() {
+    // When switching to freelook, preserve current view direction
+    float yaw = m_orbitController->getYaw();
+    float pitch = m_orbitController->getPitch();
+    m_freelookController->setRotation(yaw, pitch);
 }
 
 void EditorCamera::focusOn(const glm::vec3& center, float size) {
-    m_orbitTarget = center;
-    m_orbitDistance = size * 2.0f;
-    updateCameraFromOrbit();
+    m_orbitController->focusOn(center, size);
 }
 
 void EditorCamera::reset() {
-    m_orbitTarget = glm::vec3(0.0f);
-    m_orbitDistance = 5.0f;
-    m_yaw = -90.0f;
-    m_pitch = 20.0f;
-    updateCameraFromOrbit();
+    m_orbitController->reset();
+    m_freelookController->reset();
+}
+
+void EditorCamera::setOrbitTarget(const glm::vec3& target) {
+    m_orbitController->setTarget(target);
+}
+
+glm::vec3 EditorCamera::getOrbitTarget() const {
+    return m_orbitController->getTarget();
+}
+
+void EditorCamera::setMoveSpeed(float speed) {
+    m_freelookController->setMoveSpeed(speed);
+}
+
+void EditorCamera::setRotateSpeed(float speed) {
+    m_orbitController->setRotateSpeed(speed);
+    m_freelookController->setRotateSpeed(speed);
+}
+
+void EditorCamera::setZoomSpeed(float speed) {
+    m_orbitController->setZoomSpeed(speed);
 }
 
 } // namespace PinaEditor

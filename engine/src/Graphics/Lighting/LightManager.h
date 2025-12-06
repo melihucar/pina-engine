@@ -68,10 +68,15 @@ public:
     /// @param shader Shader to upload uniforms to
     void uploadToShader(Shader* shader) const;
 
-    /// Upload material data to a shader
+    /// Upload material data to a shader (Blinn-Phong workflow)
     /// @param shader Shader to upload uniforms to
     /// @param material Material properties to upload
     void uploadMaterial(Shader* shader, const Material& material) const;
+
+    /// Upload PBR material data to a shader (Metallic-Roughness workflow)
+    /// @param shader Shader to upload uniforms to
+    /// @param material Material properties to upload
+    void uploadPBRMaterial(Shader* shader, const Material& material) const;
 
     /// Set camera/view position (needed for specular calculations)
     /// @param position World-space camera position

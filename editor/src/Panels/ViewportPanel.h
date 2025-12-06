@@ -21,6 +21,13 @@ class RotateGizmo;
 class ScaleGizmo;
 enum class GizmoMode;
 
+/// Shading mode for viewport rendering
+enum class ShadingMode {
+    Smooth,     ///< Smooth shading with interpolated normals (default)
+    Flat,       ///< Flat shading with face normals
+    Wireframe   ///< Wireframe rendering
+};
+
 /// Viewport panel - 3D scene view with gizmos
 class ViewportPanel : public Panel {
 public:
@@ -39,6 +46,10 @@ public:
     GizmoMode getGizmoMode() const;
     void setGizmoMode(GizmoMode mode);
 
+    // Shading mode control
+    ShadingMode getShadingMode() const { return m_shadingMode; }
+    void setShadingMode(ShadingMode mode) { m_shadingMode = mode; }
+
     // Get viewport dimensions
     glm::vec2 getViewportSize() const { return m_viewportSize; }
     bool isViewportFocused() const { return m_viewportFocused; }
@@ -51,6 +62,7 @@ private:
     Pina::Scene* m_scene = nullptr;
     Pina::Shader* m_shader = nullptr;
     Pina::Input* m_input = nullptr;
+    Pina::GraphicsDevice* m_graphicsDevice = nullptr;
     Selection* m_selection = nullptr;
     EditorCamera* m_editorCamera = nullptr;
 
@@ -61,6 +73,7 @@ private:
     std::unique_ptr<ScaleGizmo> m_scaleGizmo;
 
     GizmoMode m_gizmoMode;
+    ShadingMode m_shadingMode = ShadingMode::Smooth;
 
     glm::vec2 m_viewportSize = glm::vec2(800, 600);
     bool m_viewportFocused = false;

@@ -45,6 +45,13 @@ FetchContent_Declare(
     GIT_TAG        v5.4.3
 )
 
+# tinygltf - glTF loading (header-only)
+FetchContent_Declare(
+    tinygltf
+    GIT_REPOSITORY https://github.com/syoyo/tinygltf.git
+    GIT_TAG        v2.9.3
+)
+
 # Google Test - Testing framework
 FetchContent_Declare(
     googletest
@@ -94,6 +101,13 @@ set(ASSIMP_INJECT_DEBUG_POSTFIX OFF CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(assimp)
 message(STATUS "  - assimp: OK")
 
+# tinygltf (header-only, just populate)
+FetchContent_GetProperties(tinygltf)
+if(NOT tinygltf_POPULATED)
+    FetchContent_Populate(tinygltf)
+endif()
+message(STATUS "  - tinygltf: OK")
+
 # googletest
 set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(googletest)
@@ -102,6 +116,10 @@ message(STATUS "  - googletest: OK")
 # Create stb library target
 add_library(stb INTERFACE)
 target_include_directories(stb INTERFACE ${stb_SOURCE_DIR})
+
+# Create tinygltf library target
+add_library(tinygltf INTERFACE)
+target_include_directories(tinygltf INTERFACE ${tinygltf_SOURCE_DIR})
 
 # Create imgui library target with backends
 set(IMGUI_SOURCES

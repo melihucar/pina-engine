@@ -47,6 +47,7 @@ target_link_libraries(${ENGINE_NAME}
     PRIVATE
         imgui
         assimp::assimp
+        tinygltf
 )
 
 # Platform-specific settings

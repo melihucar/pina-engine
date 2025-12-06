@@ -35,6 +35,7 @@ ViewportPanel::~ViewportPanel() {
 }
 
 void ViewportPanel::setGraphicsDevice(Pina::GraphicsDevice* device) {
+    m_graphicsDevice = device;
     m_sceneRenderer = std::make_unique<Pina::SceneRenderer>(device);
     m_gizmoRenderer = std::make_unique<GizmoRenderer>(device);
 }
@@ -143,6 +144,34 @@ void ViewportPanel::onRender() {
                 viewportSize,
                 ImVec2(0, 1), ImVec2(1, 0)
             );
+
+            // Shading mode overlay UI (top-right corner of viewport)
+            ImVec2 overlayPos = ImGui::GetWindowPos();
+            overlayPos.x += viewportSize.x - 120.0f;
+            overlayPos.y += ImGui::GetWindowContentRegionMin().y + 8.0f;
+            ImGui::SetNextWindowPos(overlayPos);
+            ImGui::SetNextWindowBgAlpha(0.7f);
+            ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 4.0f);
+            ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(8, 6));
+            if (ImGui::Begin("##ShadingMode", nullptr,
+                             ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove |
+                             ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings |
+                             ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoNav)) {
+                ImGui::Text("Shading");
+                ImGui::Separator();
+                int shadingModeInt = static_cast<int>(m_shadingMode);
+                if (ImGui::RadioButton("Smooth", &shadingModeInt, 0)) {
+                    m_shadingMode = ShadingMode::Smooth;
+                }
+                if (ImGui::RadioButton("Flat", &shadingModeInt, 1)) {
+                    m_shadingMode = ShadingMode::Flat;
+                }
+                if (ImGui::RadioButton("Wire", &shadingModeInt, 2)) {
+                    m_shadingMode = ShadingMode::Wireframe;
+                }
+            }
+            ImGui::End();
+            ImGui::PopStyleVar(2);
         }
 
         // Gizmo mode shortcuts (when viewport is focused)
@@ -170,22 +199,28 @@ void ViewportPanel::onUpdate(float deltaTime) {
 }
 
 void ViewportPanel::renderScene() {
-    if (!m_scene || !m_shader || !m_sceneRenderer || !m_editorCamera) return;
+    if (!m_scene || !m_shader || !m_sceneRenderer || !m_editorCamera || !m_graphicsDevice) return;
 
     // Set the editor camera as active for rendering
     Pina::Camera* camera = m_editorCamera->getCamera();
     if (!camera) return;
 
-    // Clear framebuffer
-    glClearColor(0.15f, 0.15f, 0.15f, 1.0f);
-    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-    glEnable(GL_DEPTH_TEST);
+    // Clear framebuffer using graphics device abstraction
+    m_graphicsDevice->clear(0.15f, 0.15f, 0.15f, 1.0f);
+    m_graphicsDevice->setDepthTest(true);
+
+    // Apply shading mode using graphics device abstraction
+    bool wireframeMode = (m_shadingMode == ShadingMode::Wireframe);
+    m_graphicsDevice->setWireframe(wireframeMode);
 
     // Render scene with editor camera
     m_shader->bind();
     m_shader->setMat4("u_view", camera->getViewMatrix());
     m_shader->setMat4("u_projection", camera->getProjectionMatrix());
     m_shader->setVec3("u_viewPos", camera->getPosition());
+
+    // Set shading mode uniform for shader (0 = smooth, 1 = flat, 2 = wireframe)
+    m_shader->setInt("u_shadingMode", static_cast<int>(m_shadingMode));
 
     // Upload lights from scene
     Pina::LightManager& lightManager = m_scene->getLightManager();
@@ -196,6 +231,11 @@ void ViewportPanel::renderScene() {
     if (root) {
         // Use SceneRenderer to traverse and render
         m_sceneRenderer->render(m_scene, m_shader);
+    }
+
+    // Reset wireframe mode after rendering
+    if (wireframeMode) {
+        m_graphicsDevice->setWireframe(false);
     }
 }
 

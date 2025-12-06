@@ -2,11 +2,15 @@
 
 #include "Model.h"
 #include "Loaders/AssimpLoader.h"
+#include "Loaders/TinyGLTFLoader.h"
 #include <iostream>
+#include <algorithm>
+#include <cctype>
 
 namespace Pina {
 
 UNIQUE<Model> Model::load(GraphicsDevice* device, const std::string& path) {
+    // Use Assimp for all formats (testing)
     return AssimpLoader::load(device, path);
 }
 
@@ -15,7 +19,13 @@ void Model::draw(Shader* shader, LightManager* lightManager) {
         // Get material for this mesh
         size_t materialIndex = i < m_meshMaterialIndices.size() ? m_meshMaterialIndices[i] : 0;
         if (materialIndex < m_materials.size()) {
-            lightManager->uploadMaterial(shader, m_materials[materialIndex]);
+            const Material& mat = m_materials[materialIndex];
+            // Use PBR upload for PBR materials, Blinn-Phong for others
+            if (mat.isPBR()) {
+                lightManager->uploadPBRMaterial(shader, mat);
+            } else {
+                lightManager->uploadMaterial(shader, mat);
+            }
         }
 
         // Draw mesh
@@ -41,6 +51,15 @@ Material* Model::getMaterial(size_t index) {
 const Material* Model::getMaterial(size_t index) const {
     if (index >= m_materials.size()) return nullptr;
     return &m_materials[index];
+}
+
+bool Model::hasPBRMaterials() const {
+    for (const auto& material : m_materials) {
+        if (material.isPBR()) {
+            return true;
+        }
+    }
+    return false;
 }
 
 } // namespace Pina

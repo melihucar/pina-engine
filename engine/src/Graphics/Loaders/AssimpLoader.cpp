@@ -1,4 +1,5 @@
 /// Pina Engine - Assimp Model Loader Implementation
+/// Simplified approach - read vertex data directly like LearnOpenGL
 
 #include "AssimpLoader.h"
 #include <assimp/Importer.hpp>
@@ -7,9 +8,11 @@
 #include <assimp/GltfMaterial.h>
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtc/type_ptr.hpp>
 #include <iostream>
 #include <algorithm>
 #include <cctype>
+#include <map>
 
 namespace Pina {
 
@@ -55,29 +58,44 @@ static bool needsUVFlip(ModelFormat format) {
         case ModelFormat::FBX:
         case ModelFormat::COLLADA:
         case ModelFormat::ThreeDS:
-            return true;  // These formats typically need UV flip
-        case ModelFormat::GLTF:
+        case ModelFormat::GLTF:  // glTF uses V=0 at top, OpenGL uses V=0 at bottom
+            return true;
         case ModelFormat::PLY:
         case ModelFormat::STL:
         default:
-            return false; // glTF already has correct UVs
+            return false;
     }
 }
 
-// ============================================================================
-// Matrix Conversion
-// ============================================================================
-
-// Convert assimp matrix to GLM matrix
-// aiMatrix4x4 uses row-major storage
-// GLM uses column-major storage
+// Helper to convert Assimp matrix to GLM
 static glm::mat4 aiToGlm(const aiMatrix4x4& m) {
     return glm::mat4(
-        m.a1, m.a2, m.a3, m.a4,
-        m.b1, m.b2, m.b3, m.b4,
-        m.c1, m.c2, m.c3, m.c4,
-        m.d1, m.d2, m.d3, m.d4
+        m.a1, m.b1, m.c1, m.d1,
+        m.a2, m.b2, m.c2, m.d2,
+        m.a3, m.b3, m.c3, m.d3,
+        m.a4, m.b4, m.c4, m.d4
     );
+}
+
+// Build mesh-to-transform map by traversing node hierarchy
+static void buildMeshTransforms(
+    aiNode* node,
+    const glm::mat4& parentTransform,
+    std::map<unsigned int, glm::mat4>& meshTransforms)
+{
+    glm::mat4 nodeTransform = aiToGlm(node->mTransformation);
+    glm::mat4 worldTransform = parentTransform * nodeTransform;
+
+    // Store transform for each mesh referenced by this node
+    for (unsigned int i = 0; i < node->mNumMeshes; ++i) {
+        unsigned int meshIndex = node->mMeshes[i];
+        meshTransforms[meshIndex] = worldTransform;
+    }
+
+    // Process children
+    for (unsigned int i = 0; i < node->mNumChildren; ++i) {
+        buildMeshTransforms(node->mChildren[i], worldTransform, meshTransforms);
+    }
 }
 
 // ============================================================================
@@ -91,15 +109,9 @@ UNIQUE<Model> AssimpLoader::load(GraphicsDevice* device, const std::string& path
     ModelFormat format = detectFormat(path);
     std::cout << "Loading model: " << path << " (format: " << static_cast<int>(format) << ")" << std::endl;
 
-    // Base post-processing flags
-    unsigned int flags =
-        aiProcess_Triangulate |           // Convert to triangles
-        aiProcess_GenSmoothNormals |      // Generate smooth normals if missing
-        aiProcess_CalcTangentSpace |      // For normal mapping
-        aiProcess_JoinIdenticalVertices | // Optimize mesh
-        aiProcess_OptimizeMeshes |        // Reduce draw calls
-        aiProcess_SortByPType |           // Split meshes by primitive type
-        aiProcess_ValidateDataStructure;  // Check data integrity
+    // Minimal post-processing - just triangulate
+    // Like LearnOpenGL: aiProcess_Triangulate | aiProcess_FlipUVs
+    unsigned int flags = aiProcess_Triangulate;
 
     // Add UV flip for formats that need it
     if (needsUVFlip(format)) {
@@ -150,8 +162,33 @@ UNIQUE<Model> AssimpLoader::load(GraphicsDevice* device, const std::string& path
         model->m_materials.push_back(Material::createDefault());
     }
 
-    // Process scene graph with identity transform as root
-    processNode(scene->mRootNode, scene, ctx, glm::mat4(1.0f));
+    // Build mesh-to-transform map from node hierarchy
+    std::map<unsigned int, glm::mat4> meshTransforms;
+    buildMeshTransforms(scene->mRootNode, glm::mat4(1.0f), meshTransforms);
+
+    // Process all meshes with their transforms
+    std::cout << "=== DEBUG: Processing " << scene->mNumMeshes << " meshes ===" << std::endl;
+    for (unsigned int i = 0; i < scene->mNumMeshes; ++i) {
+        aiMesh* mesh = scene->mMeshes[i];
+        std::cout << "  Mesh " << i << ": " << (mesh->mName.length > 0 ? mesh->mName.C_Str() : "(unnamed)") << std::endl;
+
+        // Get transform for this mesh (identity if not found)
+        glm::mat4 transform = glm::mat4(1.0f);
+        auto it = meshTransforms.find(i);
+        if (it != meshTransforms.end()) {
+            transform = it->second;
+        }
+
+        auto staticMesh = processMesh(mesh, ctx, transform);
+        if (staticMesh) {
+            model->m_meshes.push_back(std::move(staticMesh));
+            if (mesh->mMaterialIndex < scene->mNumMaterials) {
+                model->m_meshMaterialIndices.push_back(mesh->mMaterialIndex);
+            } else {
+                model->m_meshMaterialIndices.push_back(0);
+            }
+        }
+    }
 
     std::cout << "Loaded model: " << path << std::endl;
     std::cout << "  Meshes: " << model->m_meshes.size() << std::endl;
@@ -163,39 +200,25 @@ UNIQUE<Model> AssimpLoader::load(GraphicsDevice* device, const std::string& path
 }
 
 // ============================================================================
-// Node Processing
+// Node Processing (not used in simple mode, kept for compatibility)
 // ============================================================================
 
 void AssimpLoader::processNode(aiNode* node, const aiScene* scene, LoadContext& ctx, const glm::mat4& parentTransform) {
-    // Calculate this node's world transform by accumulating parent transform
-    glm::mat4 nodeTransform = aiToGlm(node->mTransformation);
-    glm::mat4 worldTransform = parentTransform * nodeTransform;
-
-    // Process meshes in this node with the accumulated transform
-    for (unsigned int i = 0; i < node->mNumMeshes; ++i) {
-        aiMesh* mesh = scene->mMeshes[node->mMeshes[i]];
-        auto staticMesh = processMesh(mesh, ctx, worldTransform);
-        if (staticMesh) {
-            ctx.model->m_meshes.push_back(std::move(staticMesh));
-            ctx.model->m_meshMaterialIndices.push_back(mesh->mMaterialIndex);
-        }
-    }
-
-    // Recursively process child nodes with this node's world transform
-    for (unsigned int i = 0; i < node->mNumChildren; ++i) {
-        processNode(node->mChildren[i], scene, ctx, worldTransform);
-    }
+    // Not used in simple loading mode
+    (void)node;
+    (void)scene;
+    (void)ctx;
+    (void)parentTransform;
 }
 
 // ============================================================================
-// Mesh Processing
+// Mesh Processing - Simple direct read like LearnOpenGL
 // ============================================================================
 
 UNIQUE<StaticMesh> AssimpLoader::processMesh(aiMesh* mesh, LoadContext& ctx, const glm::mat4& transform) {
     std::vector<float> vertices;
     std::vector<uint32_t> indices;
 
-    // Check if mesh has required data
     if (mesh->mNumVertices == 0) {
         std::cerr << "Warning: Mesh has no vertices, skipping" << std::endl;
         return nullptr;
@@ -208,52 +231,61 @@ UNIQUE<StaticMesh> AssimpLoader::processMesh(aiMesh* mesh, LoadContext& ctx, con
     // Calculate normal matrix for transforming normals
     glm::mat3 normalMatrix = glm::transpose(glm::inverse(glm::mat3(transform)));
 
-    // Process vertices, applying the node hierarchy transform
+    // Process vertices with transform applied
     for (unsigned int i = 0; i < mesh->mNumVertices; ++i) {
-        // Position - transform by node hierarchy
-        glm::vec4 rawPos(mesh->mVertices[i].x, mesh->mVertices[i].y, mesh->mVertices[i].z, 1.0f);
-        glm::vec3 pos = glm::vec3(transform * rawPos);
-        vertices.push_back(pos.x);
-        vertices.push_back(pos.y);
-        vertices.push_back(pos.z);
+        // Position - apply transform
+        glm::vec4 localPos(mesh->mVertices[i].x, mesh->mVertices[i].y, mesh->mVertices[i].z, 1.0f);
+        glm::vec4 worldPos = transform * localPos;
 
-        // Expand model's bounding box with transformed position
-        ctx.model->m_boundingBox.expand(pos);
+        vertices.push_back(worldPos.x);
+        vertices.push_back(worldPos.y);
+        vertices.push_back(worldPos.z);
 
-        // Normal - transform by normal matrix
+        // Expand bounding box with transformed position
+        ctx.model->m_boundingBox.expand(glm::vec3(worldPos));
+
+        // Normal - apply normal matrix
         if (mesh->HasNormals()) {
-            glm::vec3 rawNormal(mesh->mNormals[i].x, mesh->mNormals[i].y, mesh->mNormals[i].z);
-            glm::vec3 normal = glm::normalize(normalMatrix * rawNormal);
-            vertices.push_back(normal.x);
-            vertices.push_back(normal.y);
-            vertices.push_back(normal.z);
+            glm::vec3 localNorm(mesh->mNormals[i].x, mesh->mNormals[i].y, mesh->mNormals[i].z);
+            glm::vec3 worldNorm = glm::normalize(normalMatrix * localNorm);
+            vertices.push_back(worldNorm.x);
+            vertices.push_back(worldNorm.y);
+            vertices.push_back(worldNorm.z);
         } else {
-            // Default up normal
             vertices.push_back(0.0f);
             vertices.push_back(1.0f);
             vertices.push_back(0.0f);
         }
 
-        // Texture coordinates - use first UV channel
+        // Texture coordinates (unchanged by transform)
         if (mesh->mTextureCoords[0]) {
             vertices.push_back(mesh->mTextureCoords[0][i].x);
             vertices.push_back(mesh->mTextureCoords[0][i].y);
         } else {
-            // Default UVs
             vertices.push_back(0.0f);
             vertices.push_back(0.0f);
         }
     }
 
     // Process indices
+    uint32_t maxIndex = 0;
     for (unsigned int i = 0; i < mesh->mNumFaces; ++i) {
         aiFace& face = mesh->mFaces[i];
-        // Only process triangles (aiProcess_Triangulate should ensure this)
         if (face.mNumIndices == 3) {
             indices.push_back(face.mIndices[0]);
             indices.push_back(face.mIndices[1]);
             indices.push_back(face.mIndices[2]);
+            maxIndex = std::max(maxIndex, face.mIndices[0]);
+            maxIndex = std::max(maxIndex, face.mIndices[1]);
+            maxIndex = std::max(maxIndex, face.mIndices[2]);
         }
+    }
+
+    // Debug logging
+    std::cout << "    Vertices: " << mesh->mNumVertices << ", Faces: " << mesh->mNumFaces
+              << ", MaterialIdx: " << mesh->mMaterialIndex << std::endl;
+    if (maxIndex >= mesh->mNumVertices) {
+        std::cerr << "    ERROR: Max index " << maxIndex << " >= vertex count " << mesh->mNumVertices << std::endl;
     }
 
     if (indices.empty()) {
@@ -277,62 +309,124 @@ Material AssimpLoader::processMaterial(aiMaterial* mat, LoadContext& ctx) {
         std::cout << "  Processing material: " << matName.C_Str() << std::endl;
     }
 
-    // Get colors
+    // ========================================================================
+    // Detect if this is a PBR material
+    // ========================================================================
+    bool isPBR = false;
+
+    // Check for PBR textures
+    if (mat->GetTextureCount(aiTextureType_BASE_COLOR) > 0 ||
+        mat->GetTextureCount(aiTextureType_METALNESS) > 0 ||
+        mat->GetTextureCount(aiTextureType_DIFFUSE_ROUGHNESS) > 0 ||
+        mat->GetTextureCount(aiTextureType_UNKNOWN) > 0) {
+        isPBR = true;
+    }
+
+    // Check for PBR properties
+    float metallicFactor = 0.0f;
+    float roughnessFactor = 0.5f;
+    if (mat->Get(AI_MATKEY_METALLIC_FACTOR, metallicFactor) == AI_SUCCESS ||
+        mat->Get(AI_MATKEY_ROUGHNESS_FACTOR, roughnessFactor) == AI_SUCCESS) {
+        isPBR = true;
+    }
+
+    // ========================================================================
+    // Common properties
+    // ========================================================================
     aiColor3D color;
 
-    if (mat->Get(AI_MATKEY_COLOR_DIFFUSE, color) == AI_SUCCESS) {
-        material.setDiffuse(Color(color.r, color.g, color.b));
-    }
-
-    if (mat->Get(AI_MATKEY_COLOR_SPECULAR, color) == AI_SUCCESS) {
-        material.setSpecular(Color(color.r, color.g, color.b));
-    }
-
-    if (mat->Get(AI_MATKEY_COLOR_AMBIENT, color) == AI_SUCCESS) {
-        material.setAmbient(Color(color.r, color.g, color.b));
-    }
-
+    // Emissive
     if (mat->Get(AI_MATKEY_COLOR_EMISSIVE, color) == AI_SUCCESS) {
         material.setEmissive(Color(color.r, color.g, color.b));
     }
 
-    // Get shininess
-    float shininess = 32.0f;
-    mat->Get(AI_MATKEY_SHININESS, shininess);
-    material.setShininess(shininess > 0 ? shininess : 32.0f);
-
-    // Load textures - try multiple texture types for compatibility
-
-    // Diffuse/Base Color texture
-    Texture* diffuseMap = loadMaterialTexture(mat, aiTextureType_DIFFUSE, ctx);
-    if (!diffuseMap) {
-        // Try PBR base color
-        diffuseMap = loadMaterialTexture(mat, aiTextureType_BASE_COLOR, ctx);
-    }
-    if (diffuseMap) {
-        material.setDiffuseMap(diffuseMap);
-    }
-
-    // Specular texture
-    Texture* specularMap = loadMaterialTexture(mat, aiTextureType_SPECULAR, ctx);
-    if (!specularMap) {
-        // Try PBR metallic-roughness (for now just use as specular)
-        specularMap = loadMaterialTexture(mat, aiTextureType_METALNESS, ctx);
-    }
-    if (specularMap) {
-        material.setSpecularMap(specularMap);
-    }
-
-    // Normal texture - try multiple types
+    // Normal map
     Texture* normalMap = loadMaterialTexture(mat, aiTextureType_NORMALS, ctx);
-    if (!normalMap) {
-        normalMap = loadMaterialTexture(mat, aiTextureType_HEIGHT, ctx);
-    }
-    if (!normalMap) {
-        normalMap = loadMaterialTexture(mat, aiTextureType_NORMAL_CAMERA, ctx);
-    }
-    if (normalMap) {
-        material.setNormalMap(normalMap);
+    if (!normalMap) normalMap = loadMaterialTexture(mat, aiTextureType_HEIGHT, ctx);
+    if (!normalMap) normalMap = loadMaterialTexture(mat, aiTextureType_NORMAL_CAMERA, ctx);
+    if (normalMap) material.setNormalMap(normalMap);
+
+    // Emission map
+    Texture* emissionMap = loadMaterialTexture(mat, aiTextureType_EMISSIVE, ctx);
+    if (emissionMap) material.setEmissionMap(emissionMap);
+
+    // ========================================================================
+    // PBR or Blinn-Phong
+    // ========================================================================
+    if (isPBR) {
+        std::cout << "    -> PBR material detected" << std::endl;
+
+        // Base color
+        aiColor4D baseColor(1.0f, 1.0f, 1.0f, 1.0f);
+        if (mat->Get(AI_MATKEY_BASE_COLOR, baseColor) == AI_SUCCESS) {
+            material.setAlbedo(Color(baseColor.r, baseColor.g, baseColor.b, baseColor.a));
+        } else if (mat->Get(AI_MATKEY_COLOR_DIFFUSE, color) == AI_SUCCESS) {
+            material.setAlbedo(Color(color.r, color.g, color.b));
+        }
+
+        // Metallic and roughness
+        mat->Get(AI_MATKEY_METALLIC_FACTOR, metallicFactor);
+        mat->Get(AI_MATKEY_ROUGHNESS_FACTOR, roughnessFactor);
+        material.setMetallic(metallicFactor);
+        material.setRoughness(roughnessFactor);
+
+        // Opacity
+        float opacity = 1.0f;
+        if (mat->Get(AI_MATKEY_OPACITY, opacity) == AI_SUCCESS) {
+            material.setOpacity(opacity);
+        }
+
+        // Albedo texture
+        Texture* albedoMap = loadMaterialTexture(mat, aiTextureType_BASE_COLOR, ctx);
+        if (!albedoMap) albedoMap = loadMaterialTexture(mat, aiTextureType_DIFFUSE, ctx);
+        if (albedoMap) {
+            material.setAlbedoMap(albedoMap);
+            material.setDiffuseMap(albedoMap);
+        }
+
+        // Metallic-Roughness map
+        Texture* mrMap = loadMaterialTexture(mat, aiTextureType_DIFFUSE_ROUGHNESS, ctx);
+        if (!mrMap) mrMap = loadMaterialTexture(mat, aiTextureType_UNKNOWN, ctx);
+        if (mrMap) {
+            material.setMetallicRoughnessMap(mrMap);
+        } else {
+            Texture* metallicMap = loadMaterialTexture(mat, aiTextureType_METALNESS, ctx);
+            if (metallicMap) material.setMetallicMap(metallicMap);
+            Texture* roughnessMap = loadMaterialTexture(mat, aiTextureType_SHININESS, ctx);
+            if (roughnessMap) material.setRoughnessMap(roughnessMap);
+        }
+
+        // AO map
+        Texture* aoMap = loadMaterialTexture(mat, aiTextureType_AMBIENT_OCCLUSION, ctx);
+        if (!aoMap) aoMap = loadMaterialTexture(mat, aiTextureType_LIGHTMAP, ctx);
+        if (aoMap) material.setAOMap(aoMap);
+
+        // Opacity map
+        Texture* opacityMap = loadMaterialTexture(mat, aiTextureType_OPACITY, ctx);
+        if (opacityMap) material.setOpacityMap(opacityMap);
+
+    } else {
+        std::cout << "    -> Blinn-Phong material" << std::endl;
+
+        if (mat->Get(AI_MATKEY_COLOR_DIFFUSE, color) == AI_SUCCESS) {
+            material.setDiffuse(Color(color.r, color.g, color.b));
+        }
+        if (mat->Get(AI_MATKEY_COLOR_SPECULAR, color) == AI_SUCCESS) {
+            material.setSpecular(Color(color.r, color.g, color.b));
+        }
+        if (mat->Get(AI_MATKEY_COLOR_AMBIENT, color) == AI_SUCCESS) {
+            material.setAmbient(Color(color.r, color.g, color.b));
+        }
+
+        float shininess = 32.0f;
+        mat->Get(AI_MATKEY_SHININESS, shininess);
+        material.setShininess(shininess > 0 ? shininess : 32.0f);
+
+        Texture* diffuseMap = loadMaterialTexture(mat, aiTextureType_DIFFUSE, ctx);
+        if (diffuseMap) material.setDiffuseMap(diffuseMap);
+
+        Texture* specularMap = loadMaterialTexture(mat, aiTextureType_SPECULAR, ctx);
+        if (specularMap) material.setSpecularMap(specularMap);
     }
 
     return material;
@@ -364,28 +458,22 @@ Texture* AssimpLoader::loadMaterialTexture(aiMaterial* mat, int type, LoadContex
 
     UNIQUE<Texture> texture;
 
-    // Check for embedded texture (starts with '*')
+    // Embedded texture
     if (texPathStr.length() > 0 && texPathStr[0] == '*') {
-        // Embedded texture - extract index
         int texIndex = std::atoi(texPathStr.c_str() + 1);
         if (ctx.scene && texIndex >= 0 && static_cast<unsigned int>(texIndex) < ctx.scene->mNumTextures) {
             aiTexture* embeddedTex = ctx.scene->mTextures[texIndex];
             texture = loadEmbeddedTexture(embeddedTex, ctx);
         }
     } else {
-        // External texture file - try multiple paths
+        // External texture file
         std::vector<std::string> pathsToTry;
-
-        // Original path as-is
         pathsToTry.push_back(ctx.directory + "/" + texPathStr);
 
-        // Just the filename (in case path is absolute or has wrong directory)
         size_t lastSlash = texPathStr.find_last_of("/\\");
         if (lastSlash != std::string::npos) {
             pathsToTry.push_back(ctx.directory + "/" + texPathStr.substr(lastSlash + 1));
         }
-
-        // Try in textures subdirectory
         pathsToTry.push_back(ctx.directory + "/textures/" + texPathStr);
         if (lastSlash != std::string::npos) {
             pathsToTry.push_back(ctx.directory + "/textures/" + texPathStr.substr(lastSlash + 1));
@@ -393,9 +481,7 @@ Texture* AssimpLoader::loadMaterialTexture(aiMaterial* mat, int type, LoadContex
 
         for (const auto& tryPath : pathsToTry) {
             texture = Texture::load(ctx.device, tryPath);
-            if (texture) {
-                break;
-            }
+            if (texture) break;
         }
     }
 
@@ -404,7 +490,6 @@ Texture* AssimpLoader::loadMaterialTexture(aiMaterial* mat, int type, LoadContex
         return nullptr;
     }
 
-    // Store in model and cache
     size_t index = ctx.model->m_textures.size();
     ctx.loadedTextures[texPathStr] = index;
     Texture* texPtr = texture.get();
@@ -416,15 +501,13 @@ Texture* AssimpLoader::loadMaterialTexture(aiMaterial* mat, int type, LoadContex
 UNIQUE<Texture> AssimpLoader::loadEmbeddedTexture(aiTexture* tex, LoadContext& ctx) {
     if (!tex) return nullptr;
 
-    // Check if texture is compressed (has height of 0)
     if (tex->mHeight == 0) {
-        // Compressed format (PNG, JPG, etc.) - data is in pcData, size is mWidth bytes
+        // Compressed format
         return Texture::loadFromMemory(ctx.device,
             reinterpret_cast<const unsigned char*>(tex->pcData),
             tex->mWidth);
     } else {
-        // Raw ARGB8888 format
-        // Convert to RGBA and create texture
+        // Raw ARGB8888
         std::vector<unsigned char> rgbaData(tex->mWidth * tex->mHeight * 4);
         for (unsigned int i = 0; i < tex->mWidth * tex->mHeight; ++i) {
             aiTexel& texel = tex->pcData[i];

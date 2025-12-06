@@ -213,4 +213,85 @@ void LightManager::uploadMaterial(Shader* shader, const Material& material) cons
     }
 }
 
+void LightManager::uploadPBRMaterial(Shader* shader, const Material& material) const {
+    if (shader == nullptr) return;
+
+    // Upload PBR value uniforms
+    Color albedo = material.getAlbedo();
+    Color emissive = material.getEmissive();
+
+    shader->setVec3("uAlbedo", glm::vec3(albedo.r, albedo.g, albedo.b));
+    shader->setFloat("uMetallic", material.getMetallic());
+    shader->setFloat("uRoughness", material.getRoughness());
+    shader->setFloat("uAO", material.getAO());
+    shader->setVec3("uEmissive", glm::vec3(emissive.r, emissive.g, emissive.b));
+    shader->setFloat("uOpacity", material.getOpacity());
+
+    // Texture binding and flags
+    int textureUnit = 0;
+
+    // Albedo map
+    if (material.hasAlbedoMap()) {
+        material.getAlbedoMap()->bind(textureUnit);
+        shader->setInt("uAlbedoMap", textureUnit++);
+        shader->setInt("uUseAlbedoMap", 1);
+    } else {
+        shader->setInt("uUseAlbedoMap", 0);
+    }
+
+    // Metallic-Roughness combined map (glTF format: G=roughness, B=metallic)
+    if (material.hasMetallicRoughnessMap()) {
+        material.getMetallicRoughnessMap()->bind(textureUnit);
+        shader->setInt("uMetallicRoughnessMap", textureUnit++);
+        shader->setInt("uUseMetallicRoughnessMap", 1);
+    } else {
+        shader->setInt("uUseMetallicRoughnessMap", 0);
+    }
+
+    // Separate metallic map
+    if (material.hasMetallicMap()) {
+        material.getMetallicMap()->bind(textureUnit);
+        shader->setInt("uMetallicMap", textureUnit++);
+        shader->setInt("uUseMetallicMap", 1);
+    } else {
+        shader->setInt("uUseMetallicMap", 0);
+    }
+
+    // Separate roughness map
+    if (material.hasRoughnessMap()) {
+        material.getRoughnessMap()->bind(textureUnit);
+        shader->setInt("uRoughnessMap", textureUnit++);
+        shader->setInt("uUseRoughnessMap", 1);
+    } else {
+        shader->setInt("uUseRoughnessMap", 0);
+    }
+
+    // Normal map
+    if (material.hasNormalMap()) {
+        material.getNormalMap()->bind(textureUnit);
+        shader->setInt("uNormalMap", textureUnit++);
+        shader->setInt("uUseNormalMap", 1);
+    } else {
+        shader->setInt("uUseNormalMap", 0);
+    }
+
+    // AO map
+    if (material.hasAOMap()) {
+        material.getAOMap()->bind(textureUnit);
+        shader->setInt("uAOMap", textureUnit++);
+        shader->setInt("uUseAOMap", 1);
+    } else {
+        shader->setInt("uUseAOMap", 0);
+    }
+
+    // Emission map
+    if (material.hasEmissionMap()) {
+        material.getEmissionMap()->bind(textureUnit);
+        shader->setInt("uEmissionMap", textureUnit++);
+        shader->setInt("uUseEmissionMap", 1);
+    } else {
+        shader->setInt("uUseEmissionMap", 0);
+    }
+}
+
 } // namespace Pina

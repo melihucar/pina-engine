@@ -20,9 +20,6 @@ UNIQUE<Texture> Texture::load(GraphicsDevice* device, const std::string& path) {
     // Load image using STB
     int width, height, channels;
 
-    // OpenGL expects textures with origin at bottom-left
-    stbi_set_flip_vertically_on_load(true);
-
     unsigned char* data = stbi_load(path.c_str(), &width, &height, &channels, 0);
 
     if (!data) {
@@ -64,15 +61,8 @@ UNIQUE<Texture> Texture::loadFromMemory(GraphicsDevice* device,
     // Load image from memory using STB
     int width, height, channels;
 
-    // Note: We don't flip vertically for embedded textures in GLB
-    // as they are already in the correct orientation
-    stbi_set_flip_vertically_on_load(false);
-
     unsigned char* pixels = stbi_load_from_memory(data, static_cast<int>(dataSize),
                                                    &width, &height, &channels, 0);
-
-    // Restore flip setting for future file loads
-    stbi_set_flip_vertically_on_load(true);
 
     if (!pixels) {
         std::cerr << "Failed to load texture from memory" << std::endl;

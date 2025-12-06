@@ -46,7 +46,7 @@ private:
     };
 
     static void processNode(aiNode* node, const aiScene* scene, LoadContext& ctx, const glm::mat4& parentTransform);
-    static UNIQUE<StaticMesh> processMesh(aiMesh* mesh, LoadContext& ctx, const glm::mat4& transform);
+    static UNIQUE<StaticMesh> processMesh(aiMesh* mesh, LoadContext& ctx, const glm::mat4& transform = glm::mat4(1.0f));
     static Material processMaterial(aiMaterial* mat, LoadContext& ctx);
     static Texture* loadMaterialTexture(aiMaterial* mat, int type, LoadContext& ctx);
     static UNIQUE<Texture> loadEmbeddedTexture(aiTexture* tex, LoadContext& ctx);

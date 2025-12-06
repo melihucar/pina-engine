@@ -91,6 +91,9 @@ public:
     Material* getMaterial(size_t index);
     const Material* getMaterial(size_t index) const;
 
+    /// Check if any material uses PBR workflow
+    bool hasPBRMaterials() const;
+
     // ========================================================================
     // Info
     // ========================================================================
@@ -124,6 +127,7 @@ public:
 
 private:
     friend class AssimpLoader;
+    friend class TinyGLTFLoader;
 
     Model() = default;
 

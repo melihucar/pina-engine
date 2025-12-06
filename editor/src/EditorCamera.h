@@ -6,11 +6,14 @@
 namespace Pina {
     class Camera;
     class Input;
+    class OrbitCamera;
+    class FreelookCamera;
 }
 
 namespace PinaEditor {
 
 /// Editor camera with orbit and fly modes
+/// Delegates to core engine OrbitCamera and FreelookCamera controllers
 class EditorCamera {
 public:
     enum class Mode { Orbit, Fly };
@@ -32,41 +35,30 @@ public:
 
     // Camera mode
     Mode getMode() const { return m_mode; }
-    void setMode(Mode mode) { m_mode = mode; }
+    void setMode(Mode mode);
 
-    // Orbit settings
-    void setOrbitTarget(const glm::vec3& target) { m_orbitTarget = target; }
-    const glm::vec3& getOrbitTarget() const { return m_orbitTarget; }
+    // Orbit settings (delegates to OrbitCamera)
+    void setOrbitTarget(const glm::vec3& target);
+    glm::vec3 getOrbitTarget() const;
 
     // Speed settings
-    void setMoveSpeed(float speed) { m_moveSpeed = speed; }
-    void setRotateSpeed(float speed) { m_rotateSpeed = speed; }
-    void setZoomSpeed(float speed) { m_zoomSpeed = speed; }
+    void setMoveSpeed(float speed);
+    void setRotateSpeed(float speed);
+    void setZoomSpeed(float speed);
+
+    // Get underlying controllers for advanced configuration
+    Pina::OrbitCamera* getOrbitController() { return m_orbitController.get(); }
+    Pina::FreelookCamera* getFreelookController() { return m_freelookController.get(); }
 
 private:
-    void updateOrbitMode(Pina::Input* input, float deltaTime);
-    void updateFlyMode(Pina::Input* input, float deltaTime);
-    void updateCameraFromOrbit();
+    void transferStateToOrbit();
+    void transferStateToFreelook();
 
     std::unique_ptr<Pina::Camera> m_camera;
+    std::unique_ptr<Pina::OrbitCamera> m_orbitController;
+    std::unique_ptr<Pina::FreelookCamera> m_freelookController;
 
     Mode m_mode = Mode::Orbit;
-
-    // Orbit mode parameters
-    glm::vec3 m_orbitTarget = glm::vec3(0.0f);
-    float m_orbitDistance = 5.0f;
-    float m_yaw = -90.0f;    // Horizontal angle (degrees)
-    float m_pitch = 20.0f;   // Vertical angle (degrees)
-
-    // Speed settings
-    float m_moveSpeed = 5.0f;
-    float m_rotateSpeed = 0.3f;
-    float m_zoomSpeed = 1.0f;
-
-    // Input state tracking
-    bool m_isPanning = false;
-    bool m_isOrbiting = false;
-    glm::vec2 m_lastMousePos = glm::vec2(0.0f);
 };
 
 } // namespace PinaEditor

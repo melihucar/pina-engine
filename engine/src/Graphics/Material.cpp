@@ -6,6 +6,22 @@ namespace Pina {
 
 Material::Material() = default;
 
+MaterialWorkflow Material::getWorkflow() const {
+    // If any PBR textures are set, use PBR
+    if (m_hasPBRTextures || m_albedoMap || m_metallicMap ||
+        m_roughnessMap || m_metallicRoughnessMap) {
+        return MaterialWorkflow::PBR_MetallicRoughness;
+    }
+
+    // If PBR values were explicitly set, use PBR
+    if (m_hasPBRValues) {
+        return MaterialWorkflow::PBR_MetallicRoughness;
+    }
+
+    // Default to Blinn-Phong
+    return MaterialWorkflow::BlinnPhong;
+}
+
 Material Material::createDefault() {
     Material mat;
     mat.m_diffuse = Color::white();
@@ -66,6 +82,26 @@ Material Material::createEmissive(const Color& color, float intensity) {
         1.0f
     );
     mat.m_shininess = 1.0f;
+    return mat;
+}
+
+Material Material::createPBRMetal(const Color& albedo, float roughness) {
+    Material mat;
+    mat.m_albedo = albedo;
+    mat.m_metallic = 1.0f;
+    mat.m_roughness = roughness;
+    mat.m_ao = 1.0f;
+    mat.m_hasPBRValues = true;
+    return mat;
+}
+
+Material Material::createPBRDielectric(const Color& albedo, float roughness) {
+    Material mat;
+    mat.m_albedo = albedo;
+    mat.m_metallic = 0.0f;
+    mat.m_roughness = roughness;
+    mat.m_ao = 1.0f;
+    mat.m_hasPBRValues = true;
     return mat;
 }
 

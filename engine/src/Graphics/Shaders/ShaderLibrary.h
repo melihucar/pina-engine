@@ -31,6 +31,13 @@ public:
     /// Simple unlit fragment shader (solid color)
     static const char* getUnlitFragmentShader();
 
+    /// PBR vertex shader (same layout as standard)
+    static const char* getPBRVertexShader();
+
+    /// PBR fragment shader with Cook-Torrance BRDF
+    /// Supports metallic-roughness workflow
+    static const char* getPBRFragmentShader();
+
     // ========================================================================
     // Shader Components (for custom shaders)
     // ========================================================================

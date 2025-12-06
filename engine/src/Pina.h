@@ -35,6 +35,8 @@
 #include "Graphics/Primitives/QuadMesh.h"
 #include "Graphics/Primitives/CubeMesh.h"
 #include "Graphics/Camera.h"
+#include "Graphics/OrbitCamera.h"
+#include "Graphics/FreelookCamera.h"
 #include "Graphics/Material.h"
 #include "Graphics/Texture.h"
 #include "Graphics/Model.h"
