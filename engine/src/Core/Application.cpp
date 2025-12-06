@@ -163,6 +163,17 @@ int Application::run() {
     // User init
     onInit();
 
+    // Trigger initial resize to set viewport correctly (important for Retina displays)
+    {
+        int w = window->getWidth();
+        int h = window->getHeight();
+        graphics->updateContext();
+        if (m_pipeline) {
+            m_pipeline->resize(w, h);
+        }
+        onResize(w, h);
+    }
+
     // Main loop
     m_running = true;
     auto lastTime = std::chrono::high_resolution_clock::now();

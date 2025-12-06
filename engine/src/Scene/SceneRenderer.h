@@ -31,6 +31,16 @@ public:
     /// @param shader Shader to use for rendering
     void render(Scene* scene, Shader* shader);
 
+    /// Render only opaque objects in the scene
+    /// @param scene Scene to render
+    /// @param shader Shader to use for rendering
+    void renderOpaque(Scene* scene, Shader* shader);
+
+    /// Render only transparent objects in the scene
+    /// @param scene Scene to render
+    /// @param shader Shader to use for rendering
+    void renderTransparent(Scene* scene, Shader* shader);
+
     /// Render a single node and its descendants
     /// @param node Node to render
     /// @param shader Shader to use
@@ -61,7 +71,10 @@ public:
     size_t getDrawCallCount() const { return m_drawCallCount; }
 
 private:
+    enum class RenderPass { All, OpaqueOnly, TransparentOnly };
+
     void renderNodeRecursive(Node* node, Shader* shader, Camera* camera, LightManager* lightManager);
+    void renderNodeRecursivePass(Node* node, Shader* shader, LightManager* lightManager, RenderPass pass);
 
     GraphicsDevice* m_device;
 

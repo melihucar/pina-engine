@@ -85,20 +85,18 @@ public:
         // Set wireframe mode
         ctx.device->setWireframe(wireframe);
 
-        // Render scene
+        // Render scene with two-pass rendering for proper transparency
         if (m_sceneRenderer) {
-            // Two-pass rendering for transparency
             // Pass 1: Opaque objects
             ctx.device->setBlending(false);
             ctx.device->setDepthWrite(true);
-            m_sceneRenderer->render(ctx.scene, shader);
+            m_sceneRenderer->renderOpaque(ctx.scene, shader);
 
             // Pass 2: Transparent objects (if enabled)
             if (enableTransparency) {
                 ctx.device->setBlending(true);
                 ctx.device->setDepthWrite(false);
-                // Note: SceneRenderer would need to support separate
-                // opaque/transparent rendering. For now, we just render all.
+                m_sceneRenderer->renderTransparent(ctx.scene, shader);
                 ctx.device->setDepthWrite(true);
                 ctx.device->setBlending(false);
             }
