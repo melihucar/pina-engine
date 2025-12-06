@@ -2,7 +2,6 @@
 /// Demonstrates texture loading and rendering with the material system
 
 #include <Pina.h>
-#include <glm/gtc/matrix_transform.hpp>
 #include <iostream>
 #include <vector>
 
@@ -14,23 +13,15 @@ public:
         m_config.windowHeight = 720;
         m_config.vsync = true;
         m_config.resizable = true;
+        m_config.clearColor = Pina::Color(0.1f, 0.1f, 0.12f);
     }
 
 protected:
     void onInit() override {
-        m_device = Pina::GraphicsDevice::create(Pina::GraphicsBackend::OpenGL);
-        m_device->setDepthTest(true);
+        getDevice()->setDepthTest(true);
 
-        // Create meshes
-        m_cube = Pina::CubeMesh::create(m_device.get(), 1.0f);
-        m_quad = Pina::QuadMesh::create(m_device.get(), 2.0f, 2.0f);
-
-        // Load standard lit shader
-        m_shader = m_device->createShader();
-        if (!m_shader->load(Pina::ShaderLibrary::getStandardVertexShader(),
-                            Pina::ShaderLibrary::getStandardFragmentShader())) {
-            std::cerr << "Failed to compile shader!" << std::endl;
-        }
+        // Setup scene
+        m_scene.setDevice(getDevice());
 
         // Create procedural textures (since we don't have external files)
         createCheckerboardTexture();
@@ -45,12 +36,40 @@ protected:
 
         m_plainMaterial = Pina::Material::createMetal(Pina::Color(0.8f, 0.6f, 0.2f), 64.0f);
 
-        // Setup camera
-        m_camera.setPerspective(45.0f, 1280.0f / 720.0f, 0.1f, 100.0f);
-        m_camera.lookAt(m_cameraPos, glm::vec3(0.0f), glm::vec3(0.0f, 1.0f, 0.0f));
+        // Create rotating center cube (uses selected texture)
+        m_centerCube = m_scene.createCube("CenterCube", 1.0f);
+        m_centerCube->setMaterial(m_checkerMaterial);
+
+        // Create left cube (brick texture)
+        m_brickCube = m_scene.createCube("BrickCube", 1.0f);
+        m_brickCube->setMaterial(m_brickMaterial);
+        m_brickCube->getTransform().setLocalPosition(-2.5f, 0.0f, 0.0f);
+
+        // Create right cube (metal, no texture)
+        m_metalCube = m_scene.createCube("MetalCube", 1.0f);
+        m_metalCube->setMaterial(m_plainMaterial);
+        m_metalCube->getTransform().setLocalPosition(2.5f, 0.0f, 0.0f);
+
+        // Create floor plane (using a flat cube since we don't have createPlane yet)
+        m_floor = m_scene.createCube("Floor", 1.0f);
+        m_floor->setMaterial(m_checkerMaterial);
+        m_floor->getTransform().setLocalPosition(0.0f, -1.5f, 0.0f);
+        m_floor->getTransform().setLocalScale(6.0f, 0.1f, 6.0f);
 
         // Setup lights
         setupLights();
+
+        // Setup camera
+        auto* camera = m_scene.getOrCreateDefaultCamera(45.0f);
+        camera->lookAt(m_cameraPos, glm::vec3(0.0f), glm::vec3(0.0f, 1.0f, 0.0f));
+
+        // Create shader and renderer
+        m_shader = getDevice()->createShader();
+        m_shader->load(
+            Pina::ShaderLibrary::getStandardVertexShader(),
+            Pina::ShaderLibrary::getStandardFragmentShader()
+        );
+        m_renderer = Pina::MAKE_UNIQUE<Pina::SceneRenderer>(getDevice());
 
         std::cout << "=== Texture Sample ===" << std::endl;
         std::cout << "Controls:" << std::endl;
@@ -78,7 +97,7 @@ protected:
             }
         }
 
-        m_checkerTexture = Pina::Texture::create(m_device.get(), data.data(), size, size, 3);
+        m_checkerTexture = Pina::Texture::create(getDevice(), data.data(), size, size, 3);
         std::cout << "Created checkerboard texture (" << size << "x" << size << ")" << std::endl;
     }
 
@@ -122,11 +141,13 @@ protected:
             }
         }
 
-        m_brickTexture = Pina::Texture::create(m_device.get(), data.data(), size, size, 3);
+        m_brickTexture = Pina::Texture::create(getDevice(), data.data(), size, size, 3);
         std::cout << "Created brick texture (" << size << "x" << size << ")" << std::endl;
     }
 
     void setupLights() {
+        auto& lightManager = m_scene.getLightManager();
+
         // Sun light
         m_sunLight.setDirection(Pina::Vector3(-0.5f, -1.0f, -0.3f));
         m_sunLight.setColor(Pina::Color(1.0f, 0.95f, 0.9f));
@@ -139,9 +160,9 @@ protected:
         m_pointLight.setIntensity(1.0f);
         m_pointLight.setRange(10.0f);
 
-        m_lightManager.addLight(&m_sunLight);
-        m_lightManager.addLight(&m_pointLight);
-        m_lightManager.setGlobalAmbient(Pina::Color(0.05f, 0.05f, 0.07f));
+        lightManager.addLight(&m_sunLight);
+        lightManager.addLight(&m_pointLight);
+        lightManager.setGlobalAmbient(Pina::Color(0.05f, 0.05f, 0.07f));
     }
 
     void onUpdate(float deltaTime) override {
@@ -156,14 +177,17 @@ protected:
         // Texture mode switching
         if (input->isKeyPressed(Pina::Key::Num1)) {
             m_textureMode = 0;
+            m_centerCube->setMaterial(m_checkerMaterial);
             std::cout << "Mode: Checkerboard texture" << std::endl;
         }
         if (input->isKeyPressed(Pina::Key::Num2)) {
             m_textureMode = 1;
+            m_centerCube->setMaterial(m_brickMaterial);
             std::cout << "Mode: Brick texture" << std::endl;
         }
         if (input->isKeyPressed(Pina::Key::Num3)) {
             m_textureMode = 2;
+            m_centerCube->setMaterial(m_plainMaterial);
             std::cout << "Mode: No texture (plain material)" << std::endl;
         }
 
@@ -194,92 +218,37 @@ protected:
             m_cameraFront = glm::normalize(front);
         }
 
-        m_camera.lookAt(m_cameraPos, m_cameraPos + m_cameraFront, m_cameraUp);
+        // Update camera
+        if (auto* camera = m_scene.getActiveCamera()) {
+            camera->lookAt(m_cameraPos, m_cameraPos + m_cameraFront, m_cameraUp);
+        }
 
-        // Rotation
+        // Update rotation
         if (m_rotate) {
             m_rotation += deltaTime * 30.0f;
         }
 
-        m_lightManager.update();
+        // Update cube rotations
+        m_centerCube->getTransform().setLocalRotationEuler(m_rotation * 0.5f, m_rotation, 0.0f);
+        m_brickCube->getTransform().setLocalRotationEuler(0.0f, m_rotation * 0.3f, 0.0f);
+        m_metalCube->getTransform().setLocalRotationEuler(0.0f, -m_rotation * 0.4f, 0.0f);
+
+        // Update scene
+        m_scene.update(deltaTime);
     }
 
     void onRender() override {
-        m_device->beginFrame();
-        m_device->clear(0.1f, 0.1f, 0.12f);
+        getDevice()->beginFrame();
+        getDevice()->clear(
+            m_config.clearColor.r,
+            m_config.clearColor.g,
+            m_config.clearColor.b
+        );
 
-        m_shader->bind();
+        // Render entire scene
+        m_renderer->render(&m_scene, m_shader.get());
 
-        // Set view/projection matrices
-        m_shader->setMat4("uView", m_camera.getViewMatrix());
-        m_shader->setMat4("uProjection", m_camera.getProjectionMatrix());
-
-        // Upload lighting
-        m_lightManager.setViewPosition(m_cameraPos);
-        m_lightManager.uploadToShader(m_shader.get());
-
-        // Select current material based on mode
-        Pina::Material* currentMaterial = nullptr;
-        switch (m_textureMode) {
-            case 0: currentMaterial = &m_checkerMaterial; break;
-            case 1: currentMaterial = &m_brickMaterial; break;
-            case 2: currentMaterial = &m_plainMaterial; break;
-        }
-
-        // Draw rotating cube
-        m_lightManager.uploadMaterial(m_shader.get(), *currentMaterial);
-        {
-            glm::mat4 model = glm::mat4(1.0f);
-            model = glm::rotate(model, glm::radians(m_rotation), glm::vec3(0.0f, 1.0f, 0.0f));
-            model = glm::rotate(model, glm::radians(m_rotation * 0.5f), glm::vec3(1.0f, 0.0f, 0.0f));
-
-            glm::mat3 normalMatrix = glm::transpose(glm::inverse(glm::mat3(model)));
-            m_shader->setMat4("uModel", model);
-            m_shader->setMat3("uNormalMatrix", normalMatrix);
-            m_cube->draw();
-        }
-
-        // Draw floor (with checkerboard regardless of mode)
-        m_lightManager.uploadMaterial(m_shader.get(), m_checkerMaterial);
-        {
-            glm::mat4 model = glm::mat4(1.0f);
-            model = glm::translate(model, glm::vec3(0.0f, -1.5f, 0.0f));
-            model = glm::rotate(model, glm::radians(-90.0f), glm::vec3(1.0f, 0.0f, 0.0f));
-            model = glm::scale(model, glm::vec3(3.0f, 3.0f, 1.0f));
-
-            glm::mat3 normalMatrix = glm::transpose(glm::inverse(glm::mat3(model)));
-            m_shader->setMat4("uModel", model);
-            m_shader->setMat3("uNormalMatrix", normalMatrix);
-            m_quad->draw();
-        }
-
-        // Draw second cube with brick texture
-        m_lightManager.uploadMaterial(m_shader.get(), m_brickMaterial);
-        {
-            glm::mat4 model = glm::mat4(1.0f);
-            model = glm::translate(model, glm::vec3(-2.5f, 0.0f, 0.0f));
-            model = glm::rotate(model, glm::radians(m_rotation * 0.3f), glm::vec3(0.0f, 1.0f, 0.0f));
-
-            glm::mat3 normalMatrix = glm::transpose(glm::inverse(glm::mat3(model)));
-            m_shader->setMat4("uModel", model);
-            m_shader->setMat3("uNormalMatrix", normalMatrix);
-            m_cube->draw();
-        }
-
-        // Draw third cube without texture
-        m_lightManager.uploadMaterial(m_shader.get(), m_plainMaterial);
-        {
-            glm::mat4 model = glm::mat4(1.0f);
-            model = glm::translate(model, glm::vec3(2.5f, 0.0f, 0.0f));
-            model = glm::rotate(model, glm::radians(-m_rotation * 0.4f), glm::vec3(0.0f, 1.0f, 0.0f));
-
-            glm::mat3 normalMatrix = glm::transpose(glm::inverse(glm::mat3(model)));
-            m_shader->setMat4("uModel", model);
-            m_shader->setMat3("uNormalMatrix", normalMatrix);
-            m_cube->draw();
-        }
-
-        m_device->endFrame();
+        getDevice()->endFrame();
     }
 
     void onRenderUI() override {
@@ -315,25 +284,29 @@ protected:
     }
 
     void onResize(int width, int height) override {
-        m_device->setViewport(0, 0, width, height);
-        m_camera.setAspectRatio(static_cast<float>(width) / static_cast<float>(height));
+        getDevice()->setViewport(0, 0, width, height);
+        if (auto* camera = m_scene.getActiveCamera()) {
+            camera->setAspectRatio(static_cast<float>(width) / static_cast<float>(height));
+        }
     }
 
     void onShutdown() override {
+        m_renderer.reset();
         m_shader.reset();
-        m_cube.reset();
-        m_quad.reset();
         m_checkerTexture.reset();
         m_brickTexture.reset();
-        m_device.reset();
     }
 
 private:
-    Pina::UNIQUE<Pina::GraphicsDevice> m_device;
+    Pina::Scene m_scene;
     Pina::UNIQUE<Pina::Shader> m_shader;
-    Pina::UNIQUE<Pina::CubeMesh> m_cube;
-    Pina::UNIQUE<Pina::QuadMesh> m_quad;
-    Pina::Camera m_camera;
+    Pina::UNIQUE<Pina::SceneRenderer> m_renderer;
+
+    // Scene nodes
+    Pina::Node* m_centerCube = nullptr;
+    Pina::Node* m_brickCube = nullptr;
+    Pina::Node* m_metalCube = nullptr;
+    Pina::Node* m_floor = nullptr;
 
     // Textures
     Pina::UNIQUE<Pina::Texture> m_checkerTexture;
@@ -345,7 +318,6 @@ private:
     Pina::Material m_plainMaterial;
 
     // Lights
-    Pina::LightManager m_lightManager;
     Pina::DirectionalLight m_sunLight;
     Pina::PointLight m_pointLight;
 

@@ -5,6 +5,8 @@
 #include "../Platform/Graphics.h"
 #include "../Input/Input.h"
 #include "../UI/UI.h"
+#include "../Graphics/GraphicsDevice.h"
+#include "../Graphics/RenderPipeline.h"
 
 // Platform-specific includes for connecting input to window
 #ifdef __APPLE__
@@ -38,6 +40,25 @@ UISubsystem* Application::getUI() const {
 
 EventDispatcher* Application::getEventDispatcher() const {
     return m_context ? m_context->getSubsystem<EventDispatcher>() : nullptr;
+}
+
+GraphicsDevice* Application::getDevice() {
+    return m_device.get();
+}
+
+RenderPipeline* Application::getPipeline() {
+    return m_pipeline.get();
+}
+
+void Application::createDeviceAndPipeline() {
+    if (m_config.autoCreateDevice && !m_device) {
+        m_device = GraphicsDevice::create(GraphicsBackend::OpenGL);
+    }
+
+    if (m_config.autoCreatePipeline && m_device && !m_pipeline) {
+        m_pipeline = MAKE_UNIQUE<RenderPipeline>(m_device.get());
+        m_pipeline->setClearColor(m_config.clearColor);
+    }
 }
 
 void Application::createSubsystems() {
@@ -120,9 +141,15 @@ int Application::run() {
         return -1;
     }
 
+    // Create device and pipeline if auto-creation is enabled
+    createDeviceAndPipeline();
+
     // Set up window callbacks
     window->setResizeCallback([this, graphics](int w, int h) {
         graphics->updateContext();
+        if (m_pipeline) {
+            m_pipeline->resize(w, h);
+        }
         onResize(w, h);
     });
 
@@ -172,6 +199,10 @@ int Application::run() {
 
     // User shutdown
     onShutdown();
+
+    // Cleanup pipeline and device (before subsystems)
+    m_pipeline.reset();
+    m_device.reset();
 
     // Shutdown subsystems (in reverse order)
     m_context->shutdownSubsystems();

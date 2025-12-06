@@ -41,6 +41,20 @@
 #include "Graphics/Texture.h"
 #include "Graphics/Model.h"
 #include "Graphics/Primitives/StaticMesh.h"
+#include "Graphics/Framebuffer.h"
+
+// Render Pipeline
+#include "Graphics/RenderPass.h"
+#include "Graphics/RenderContext.h"
+#include "Graphics/RenderCompositor.h"
+#include "Graphics/RenderPipeline.h"
+#include "Graphics/Passes/ClearPass.h"
+#include "Graphics/Passes/ScenePass.h"
+#include "Graphics/Passes/ShadowPass.h"
+#include "Graphics/Passes/ShaderPass.h"
+#include "Graphics/Passes/BloomPass.h"
+#include "Graphics/Passes/ToneMappingPass.h"
+#include "Graphics/Passes/FXAAPass.h"
 
 // Lighting
 #include "Graphics/Lighting/Light.h"

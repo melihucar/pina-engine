@@ -2,51 +2,7 @@
 /// Demonstrates keyboard and mouse input with the Input subsystem
 
 #include <Pina.h>
-#include <glm/gtc/matrix_transform.hpp>
 #include <iostream>
-#include <sstream>
-#include <iomanip>
-
-const char* vertexShaderSource = R"(
-#version 410 core
-layout (location = 0) in vec3 aPosition;
-layout (location = 1) in vec3 aNormal;
-layout (location = 2) in vec2 aTexCoord;
-
-uniform mat4 uMVP;
-uniform mat4 uModel;
-
-out vec3 vNormal;
-out vec3 vFragPos;
-
-void main() {
-    gl_Position = uMVP * vec4(aPosition, 1.0);
-    vFragPos = vec3(uModel * vec4(aPosition, 1.0));
-    vNormal = mat3(transpose(inverse(uModel))) * aNormal;
-}
-)";
-
-const char* fragmentShaderSource = R"(
-#version 410 core
-in vec3 vNormal;
-in vec3 vFragPos;
-
-uniform vec3 uColor;
-
-out vec4 FragColor;
-
-void main() {
-    vec3 lightDir = normalize(vec3(1.0, 1.0, 1.0));
-    vec3 normal = normalize(vNormal);
-
-    vec3 ambient = vec3(0.2);
-    float diff = max(dot(normal, lightDir), 0.0);
-    vec3 diffuse = diff * vec3(0.8);
-
-    vec3 result = (ambient + diffuse) * uColor;
-    FragColor = vec4(result, 1.0);
-}
-)";
 
 class InputSample : public Pina::Application {
 public:
@@ -56,22 +12,44 @@ public:
         m_config.windowHeight = 768;
         m_config.vsync = true;
         m_config.resizable = true;
+        m_config.clearColor = Pina::Color(0.15f, 0.15f, 0.2f);
     }
 
 protected:
     void onInit() override {
-        m_device = Pina::GraphicsDevice::create(Pina::GraphicsBackend::OpenGL);
-        m_device->setDepthTest(true);
+        getDevice()->setDepthTest(true);
 
-        m_cube = Pina::CubeMesh::create(m_device.get(), 1.0f);
+        // Setup scene
+        m_scene.setDevice(getDevice());
 
-        m_shader = m_device->createShader();
-        if (!m_shader->load(vertexShaderSource, fragmentShaderSource)) {
-            std::cerr << "Failed to compile shader!" << std::endl;
+        // Setup simple lighting
+        m_scene.setupDefaultLighting();
+
+        // Create floor grid
+        for (int x = -2; x <= 2; x++) {
+            for (int z = -2; z <= 2; z++) {
+                auto* tile = m_scene.createCube("FloorTile", 1.0f);
+                tile->setMaterial(Pina::Material::createMatte(Pina::Color(0.3f, 0.3f, 0.4f)));
+                tile->getTransform().setLocalPosition(x * 2.0f, -1.0f, z * 2.0f);
+                tile->getTransform().setLocalScale(0.9f, 0.1f, 0.9f);
+            }
         }
 
-        m_camera.setPerspective(60.0f, 1024.0f / 768.0f, 0.1f, 100.0f);
-        m_camera.lookAt(m_cameraPos, m_cameraPos + m_cameraFront, m_cameraUp);
+        // Create center cube that responds to input
+        m_centerCube = m_scene.createCube("CenterCube", 1.0f);
+        m_centerCube->setMaterial(Pina::Material::createPlastic(Pina::Color::white(), 32.0f));
+
+        // Setup camera
+        auto* camera = m_scene.getOrCreateDefaultCamera(60.0f);
+        camera->lookAt(m_cameraPos, m_cameraPos + m_cameraFront, m_cameraUp);
+
+        // Create shader and renderer
+        m_shader = getDevice()->createShader();
+        m_shader->load(
+            Pina::ShaderLibrary::getStandardVertexShader(),
+            Pina::ShaderLibrary::getStandardFragmentShader()
+        );
+        m_renderer = Pina::MAKE_UNIQUE<Pina::SceneRenderer>(getDevice());
 
         std::cout << "=== Input Sample ===" << std::endl;
         std::cout << "Controls:" << std::endl;
@@ -122,7 +100,7 @@ protected:
         // Jump detection (press = first frame only)
         if (input->isKeyPressed(Pina::Key::Space)) {
             std::cout << "Jump!" << std::endl;
-            m_cubeColor = glm::vec3(1.0f, 0.5f, 0.0f);  // Orange on jump
+            m_cubeColor = Pina::Color(1.0f, 0.5f, 0.0f);  // Orange on jump
         }
 
         // Mouse look with right button
@@ -144,7 +122,7 @@ protected:
 
         // Left click - change cube color
         if (input->isMouseButtonPressed(Pina::MouseButton::Left)) {
-            m_cubeColor = glm::vec3(0.0f, 1.0f, 0.5f);  // Cyan-green
+            m_cubeColor = Pina::Color(0.0f, 1.0f, 0.5f);  // Cyan-green
             std::cout << "Left click at: " << input->getMousePosition().x
                       << ", " << input->getMousePosition().y << std::endl;
         }
@@ -156,48 +134,38 @@ protected:
         }
 
         // Fade cube color back to white
-        m_cubeColor = glm::mix(m_cubeColor, glm::vec3(1.0f), deltaTime * 2.0f);
+        m_cubeColor = Pina::Color(
+            m_cubeColor.r + (1.0f - m_cubeColor.r) * deltaTime * 2.0f,
+            m_cubeColor.g + (1.0f - m_cubeColor.g) * deltaTime * 2.0f,
+            m_cubeColor.b + (1.0f - m_cubeColor.b) * deltaTime * 2.0f
+        );
+
+        // Update center cube material and rotation
+        m_centerCube->setMaterial(Pina::Material::createPlastic(m_cubeColor, 32.0f));
+        m_cubeRotation += deltaTime * 30.0f;
+        m_centerCube->getTransform().setLocalRotationEuler(0.0f, m_cubeRotation, 0.0f);
 
         // Update camera
-        m_camera.lookAt(m_cameraPos, m_cameraPos + m_cameraFront, m_cameraUp);
+        if (auto* camera = m_scene.getActiveCamera()) {
+            camera->lookAt(m_cameraPos, m_cameraPos + m_cameraFront, m_cameraUp);
+        }
 
-        // Rotate cube slowly
-        m_cubeRotation += deltaTime * 30.0f;
+        // Update scene
+        m_scene.update(deltaTime);
     }
 
     void onRender() override {
-        m_device->beginFrame();
-        m_device->clear(0.15f, 0.15f, 0.2f);
+        getDevice()->beginFrame();
+        getDevice()->clear(
+            m_config.clearColor.r,
+            m_config.clearColor.g,
+            m_config.clearColor.b
+        );
 
-        // Draw multiple cubes as a simple scene
-        m_shader->bind();
+        // Render entire scene
+        m_renderer->render(&m_scene, m_shader.get());
 
-        // Ground plane of cubes
-        for (int x = -2; x <= 2; x++) {
-            for (int z = -2; z <= 2; z++) {
-                glm::mat4 model = glm::mat4(1.0f);
-                model = glm::translate(model, glm::vec3(x * 2.0f, -1.0f, z * 2.0f));
-                model = glm::scale(model, glm::vec3(0.9f, 0.1f, 0.9f));
-
-                glm::mat4 mvp = m_camera.getViewProjectionMatrix() * model;
-                m_shader->setMat4("uMVP", mvp);
-                m_shader->setMat4("uModel", model);
-                m_shader->setVec3("uColor", glm::vec3(0.3f, 0.3f, 0.4f));
-                m_cube->draw();
-            }
-        }
-
-        // Center rotating cube
-        glm::mat4 model = glm::mat4(1.0f);
-        model = glm::rotate(model, glm::radians(m_cubeRotation), glm::vec3(0.0f, 1.0f, 0.0f));
-
-        glm::mat4 mvp = m_camera.getViewProjectionMatrix() * model;
-        m_shader->setMat4("uMVP", mvp);
-        m_shader->setMat4("uModel", model);
-        m_shader->setVec3("uColor", m_cubeColor);
-        m_cube->draw();
-
-        m_device->endFrame();
+        getDevice()->endFrame();
     }
 
     void onRenderUI() override {
@@ -207,10 +175,9 @@ protected:
 
         Pina::Color green = Pina::Color::green();
         Pina::Color gray = Pina::Color::gray();
-        Pina::Color white = Pina::Color::white();
 
         // Input Debug Window
-        setNextWindowSize(Pina::Vector2(280, 0));  // Wider window, auto height
+        setNextWindowSize(Pina::Vector2(280, 0));
         Window window("Input Debug", nullptr, Pina::UIWindowFlags::AlwaysAutoResize);
         if (window) {
             // Keyboard section
@@ -274,21 +241,24 @@ protected:
     }
 
     void onResize(int width, int height) override {
-        m_device->setViewport(0, 0, width, height);
-        m_camera.setAspectRatio(static_cast<float>(width) / static_cast<float>(height));
+        getDevice()->setViewport(0, 0, width, height);
+        if (auto* camera = m_scene.getActiveCamera()) {
+            camera->setAspectRatio(static_cast<float>(width) / static_cast<float>(height));
+        }
     }
 
     void onShutdown() override {
+        m_renderer.reset();
         m_shader.reset();
-        m_cube.reset();
-        m_device.reset();
     }
 
 private:
-    Pina::UNIQUE<Pina::GraphicsDevice> m_device;
+    Pina::Scene m_scene;
     Pina::UNIQUE<Pina::Shader> m_shader;
-    Pina::UNIQUE<Pina::CubeMesh> m_cube;
-    Pina::Camera m_camera;
+    Pina::UNIQUE<Pina::SceneRenderer> m_renderer;
+
+    // Scene nodes
+    Pina::Node* m_centerCube = nullptr;
 
     // Camera state
     glm::vec3 m_cameraPos{0.0f, 2.0f, 5.0f};
@@ -302,7 +272,7 @@ private:
     float m_lookSensitivity = 0.15f;
 
     // Cube state
-    glm::vec3 m_cubeColor{1.0f, 1.0f, 1.0f};
+    Pina::Color m_cubeColor = Pina::Color::white();
     float m_cubeRotation = 0.0f;
 };
 

@@ -2,7 +2,6 @@
 /// Demonstrates directional, point, and spot lights with the lighting system
 
 #include <Pina.h>
-#include <glm/gtc/matrix_transform.hpp>
 #include <iostream>
 
 class LightingSample : public Pina::Application {
@@ -13,33 +12,50 @@ public:
         m_config.windowHeight = 720;
         m_config.vsync = true;
         m_config.resizable = true;
+        m_config.clearColor = Pina::Color(0.05f, 0.05f, 0.08f);
     }
 
 protected:
     void onInit() override {
-        m_device = Pina::GraphicsDevice::create(Pina::GraphicsBackend::OpenGL);
-        m_device->setDepthTest(true);
+        getDevice()->setDepthTest(true);
 
-        // Create meshes
-        m_cube = Pina::CubeMesh::create(m_device.get(), 1.0f);
-
-        // Load standard lit shader
-        m_shader = m_device->createShader();
-        if (!m_shader->load(Pina::ShaderLibrary::getStandardVertexShader(),
-                            Pina::ShaderLibrary::getStandardFragmentShader())) {
-            std::cerr << "Failed to compile lighting shader!" << std::endl;
-        }
-
-        // Setup camera
-        m_camera.setPerspective(45.0f, 1280.0f / 720.0f, 0.1f, 100.0f);
-        m_camera.lookAt(m_cameraPos, glm::vec3(0.0f), glm::vec3(0.0f, 1.0f, 0.0f));
+        // Setup scene
+        m_scene.setDevice(getDevice());
 
         // Setup lights
         setupLights();
 
-        // Setup materials
+        // Create floor grid using scene primitives
         m_floorMaterial = Pina::Material::createMatte(Pina::Color(0.3f, 0.3f, 0.35f));
-        m_cubeMaterial = Pina::Material::createPlastic(Pina::Color::white(), 32.0f);
+        for (int x = -3; x <= 3; x++) {
+            for (int z = -3; z <= 3; z++) {
+                auto* tile = m_scene.createCube("FloorTile", 1.0f);
+                tile->setMaterial(m_floorMaterial);
+                tile->getTransform().setLocalPosition(x * 2.0f, -1.0f, z * 2.0f);
+                tile->getTransform().setLocalScale(0.95f, 0.1f, 0.95f);
+            }
+        }
+
+        // Create center rotating cube
+        m_centerCube = m_scene.createCube("CenterCube", 1.0f);
+        m_centerCube->setMaterial(Pina::Material::createPlastic(Pina::Color::white(), 32.0f));
+
+        // Create light marker cubes
+        m_pointLight1Marker = m_scene.createCube("PointLight1Marker", 0.2f);
+        m_pointLight2Marker = m_scene.createCube("PointLight2Marker", 0.2f);
+        m_spotLightMarker = m_scene.createCube("SpotLightMarker", 0.15f);
+
+        // Setup camera
+        auto* camera = m_scene.getOrCreateDefaultCamera(45.0f);
+        camera->lookAt(m_cameraPos, glm::vec3(0.0f), glm::vec3(0.0f, 1.0f, 0.0f));
+
+        // Create shader and renderer
+        m_shader = getDevice()->createShader();
+        m_shader->load(
+            Pina::ShaderLibrary::getStandardVertexShader(),
+            Pina::ShaderLibrary::getStandardFragmentShader()
+        );
+        m_renderer = Pina::MAKE_UNIQUE<Pina::SceneRenderer>(getDevice());
 
         std::cout << "=== Lighting Sample ===" << std::endl;
         std::cout << "Controls:" << std::endl;
@@ -52,6 +68,8 @@ protected:
     }
 
     void setupLights() {
+        auto& lightManager = m_scene.getLightManager();
+
         // Sun light (directional)
         m_sunLight.setDirection(Pina::Vector3(-0.5f, -1.0f, -0.3f));
         m_sunLight.setColor(Pina::Color(1.0f, 0.95f, 0.8f));
@@ -80,12 +98,12 @@ protected:
         m_spotLight.setRange(20.0f);
 
         // Add lights to manager
-        m_lightManager.addLight(&m_sunLight);
-        m_lightManager.addLight(&m_pointLight1);
-        m_lightManager.addLight(&m_pointLight2);
-        m_lightManager.addLight(&m_spotLight);
+        lightManager.addLight(&m_sunLight);
+        lightManager.addLight(&m_pointLight1);
+        lightManager.addLight(&m_pointLight2);
+        lightManager.addLight(&m_spotLight);
 
-        m_lightManager.setGlobalAmbient(Pina::Color(0.02f, 0.02f, 0.03f));
+        lightManager.setGlobalAmbient(Pina::Color(0.02f, 0.02f, 0.03f));
     }
 
     void onUpdate(float deltaTime) override {
@@ -107,10 +125,13 @@ protected:
             bool enabled = !m_pointLight1.isEnabled();
             m_pointLight1.setEnabled(enabled);
             m_pointLight2.setEnabled(enabled);
+            m_pointLight1Marker->setEnabled(enabled);
+            m_pointLight2Marker->setEnabled(enabled);
             std::cout << "Point lights: " << (enabled ? "ON" : "OFF") << std::endl;
         }
         if (input->isKeyPressed(Pina::Key::Num3)) {
             m_spotLight.setEnabled(!m_spotLight.isEnabled());
+            m_spotLightMarker->setEnabled(m_spotLight.isEnabled());
             std::cout << "Spot light: " << (m_spotLight.isEnabled() ? "ON" : "OFF") << std::endl;
         }
 
@@ -141,7 +162,10 @@ protected:
             m_cameraFront = glm::normalize(front);
         }
 
-        m_camera.lookAt(m_cameraPos, m_cameraPos + m_cameraFront, m_cameraUp);
+        // Update camera
+        if (auto* camera = m_scene.getActiveCamera()) {
+            camera->lookAt(m_cameraPos, m_cameraPos + m_cameraFront, m_cameraUp);
+        }
 
         // Animate lights
         if (m_animateLights) {
@@ -149,110 +173,57 @@ protected:
 
             // Orbit point lights
             float radius = 4.0f;
-            m_pointLight1.setPosition(Pina::Vector3(
+            Pina::Vector3 pos1(
                 cos(m_lightTime) * radius,
                 2.0f + sin(m_lightTime * 2.0f) * 0.5f,
                 sin(m_lightTime) * radius
-            ));
-            m_pointLight2.setPosition(Pina::Vector3(
+            );
+            Pina::Vector3 pos2(
                 cos(m_lightTime + 3.14159f) * radius,
                 2.0f + sin(m_lightTime * 2.0f + 3.14159f) * 0.5f,
                 sin(m_lightTime + 3.14159f) * radius
-            ));
+            );
+            m_pointLight1.setPosition(pos1);
+            m_pointLight2.setPosition(pos2);
+
+            // Update light marker positions
+            m_pointLight1Marker->getTransform().setLocalPosition(pos1.x, pos1.y, pos1.z);
+            m_pointLight2Marker->getTransform().setLocalPosition(pos2.x, pos2.y, pos2.z);
 
             // Swing spotlight
             float spotAngle = sin(m_lightTime * 0.5f) * 0.5f;
             m_spotLight.setDirection(Pina::Vector3(spotAngle, -0.7f, -0.7f));
         }
 
-        // Update light data
-        m_lightManager.update();
+        // Update light marker materials (emissive colors)
+        m_pointLight1Marker->setMaterial(Pina::Material::createEmissive(m_pointLight1.getColor(), 1.0f));
+        m_pointLight2Marker->setMaterial(Pina::Material::createEmissive(m_pointLight2.getColor(), 1.0f));
+        m_spotLightMarker->setMaterial(Pina::Material::createEmissive(Pina::Color::yellow(), 1.0f));
+
+        // Update spotlight marker position
+        Pina::Vector3 spotPos = m_spotLight.getPosition();
+        m_spotLightMarker->getTransform().setLocalPosition(spotPos.x, spotPos.y, spotPos.z);
 
         // Rotate center cube
         m_cubeRotation += deltaTime * 30.0f;
+        m_centerCube->getTransform().setLocalRotationEuler(0.0f, m_cubeRotation, 0.0f);
+
+        // Update scene
+        m_scene.update(deltaTime);
     }
 
     void onRender() override {
-        m_device->beginFrame();
-        m_device->clear(0.05f, 0.05f, 0.08f);
+        getDevice()->beginFrame();
+        getDevice()->clear(
+            m_config.clearColor.r,
+            m_config.clearColor.g,
+            m_config.clearColor.b
+        );
 
-        m_shader->bind();
+        // Render entire scene
+        m_renderer->render(&m_scene, m_shader.get());
 
-        // Set view/projection matrices
-        m_shader->setMat4("uView", m_camera.getViewMatrix());
-        m_shader->setMat4("uProjection", m_camera.getProjectionMatrix());
-
-        // Upload lighting
-        m_lightManager.setViewPosition(m_cameraPos);
-        m_lightManager.uploadToShader(m_shader.get());
-
-        // Draw floor (grid of cubes)
-        m_lightManager.uploadMaterial(m_shader.get(), m_floorMaterial);
-        for (int x = -3; x <= 3; x++) {
-            for (int z = -3; z <= 3; z++) {
-                glm::mat4 model = glm::mat4(1.0f);
-                model = glm::translate(model, glm::vec3(x * 2.0f, -1.0f, z * 2.0f));
-                model = glm::scale(model, glm::vec3(0.95f, 0.1f, 0.95f));
-
-                glm::mat3 normalMatrix = glm::transpose(glm::inverse(glm::mat3(model)));
-                m_shader->setMat4("uModel", model);
-                m_shader->setMat3("uNormalMatrix", normalMatrix);
-                m_cube->draw();
-            }
-        }
-
-        // Draw center rotating cube
-        m_lightManager.uploadMaterial(m_shader.get(), m_cubeMaterial);
-        {
-            glm::mat4 model = glm::mat4(1.0f);
-            model = glm::rotate(model, glm::radians(m_cubeRotation), glm::vec3(0.0f, 1.0f, 0.0f));
-
-            glm::mat3 normalMatrix = glm::transpose(glm::inverse(glm::mat3(model)));
-            m_shader->setMat4("uModel", model);
-            m_shader->setMat3("uNormalMatrix", normalMatrix);
-            m_cube->draw();
-        }
-
-        // Draw small cubes at light positions (for visualization)
-        Pina::Material lightMarker = Pina::Material::createEmissive(Pina::Color::white(), 1.0f);
-
-        // Point light 1 marker
-        if (m_pointLight1.isEnabled()) {
-            Pina::Material marker = Pina::Material::createEmissive(m_pointLight1.getColor(), 1.0f);
-            m_lightManager.uploadMaterial(m_shader.get(), marker);
-            Pina::Vector3 pos = m_pointLight1.getPosition();
-            glm::mat4 model = glm::translate(glm::mat4(1.0f), glm::vec3(pos.x, pos.y, pos.z));
-            model = glm::scale(model, glm::vec3(0.2f));
-            m_shader->setMat4("uModel", model);
-            m_shader->setMat3("uNormalMatrix", glm::mat3(1.0f));
-            m_cube->draw();
-        }
-
-        // Point light 2 marker
-        if (m_pointLight2.isEnabled()) {
-            Pina::Material marker = Pina::Material::createEmissive(m_pointLight2.getColor(), 1.0f);
-            m_lightManager.uploadMaterial(m_shader.get(), marker);
-            Pina::Vector3 pos = m_pointLight2.getPosition();
-            glm::mat4 model = glm::translate(glm::mat4(1.0f), glm::vec3(pos.x, pos.y, pos.z));
-            model = glm::scale(model, glm::vec3(0.2f));
-            m_shader->setMat4("uModel", model);
-            m_shader->setMat3("uNormalMatrix", glm::mat3(1.0f));
-            m_cube->draw();
-        }
-
-        // Spotlight marker
-        if (m_spotLight.isEnabled()) {
-            Pina::Material marker = Pina::Material::createEmissive(Pina::Color::yellow(), 1.0f);
-            m_lightManager.uploadMaterial(m_shader.get(), marker);
-            Pina::Vector3 pos = m_spotLight.getPosition();
-            glm::mat4 model = glm::translate(glm::mat4(1.0f), glm::vec3(pos.x, pos.y, pos.z));
-            model = glm::scale(model, glm::vec3(0.15f));
-            m_shader->setMat4("uModel", model);
-            m_shader->setMat3("uNormalMatrix", glm::mat3(1.0f));
-            m_cube->draw();
-        }
-
-        m_device->endFrame();
+        getDevice()->endFrame();
     }
 
     void onRenderUI() override {
@@ -285,31 +256,36 @@ protected:
 
             if (CollapsingHeader header("Info", Pina::UITreeNodeFlags::DefaultOpen); header) {
                 char buf[64];
-                snprintf(buf, sizeof(buf), "Active Lights: %d", m_lightManager.getLightCount());
+                snprintf(buf, sizeof(buf), "Active Lights: %d", m_scene.getLightManager().getLightCount());
                 Text{buf};
             }
         }
     }
 
     void onResize(int width, int height) override {
-        m_device->setViewport(0, 0, width, height);
-        m_camera.setAspectRatio(static_cast<float>(width) / static_cast<float>(height));
+        getDevice()->setViewport(0, 0, width, height);
+        if (auto* camera = m_scene.getActiveCamera()) {
+            camera->setAspectRatio(static_cast<float>(width) / static_cast<float>(height));
+        }
     }
 
     void onShutdown() override {
+        m_renderer.reset();
         m_shader.reset();
-        m_cube.reset();
-        m_device.reset();
     }
 
 private:
-    Pina::UNIQUE<Pina::GraphicsDevice> m_device;
+    Pina::Scene m_scene;
     Pina::UNIQUE<Pina::Shader> m_shader;
-    Pina::UNIQUE<Pina::CubeMesh> m_cube;
-    Pina::Camera m_camera;
+    Pina::UNIQUE<Pina::SceneRenderer> m_renderer;
 
-    // Lights
-    Pina::LightManager m_lightManager;
+    // Scene nodes
+    Pina::Node* m_centerCube = nullptr;
+    Pina::Node* m_pointLight1Marker = nullptr;
+    Pina::Node* m_pointLight2Marker = nullptr;
+    Pina::Node* m_spotLightMarker = nullptr;
+
+    // Lights (owned separately for direct control)
     Pina::DirectionalLight m_sunLight;
     Pina::PointLight m_pointLight1;
     Pina::PointLight m_pointLight2;
@@ -317,7 +293,6 @@ private:
 
     // Materials
     Pina::Material m_floorMaterial;
-    Pina::Material m_cubeMaterial;
 
     // Camera state
     glm::vec3 m_cameraPos{0.0f, 3.0f, 8.0f};

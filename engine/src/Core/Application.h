@@ -6,6 +6,7 @@
 #include "Export.h"
 #include "Memory.h"
 #include "Context.h"
+#include "../Math/Color.h"
 #include <string>
 
 namespace Pina {
@@ -15,6 +16,10 @@ class Graphics;
 class Input;
 class UISubsystem;
 class EventDispatcher;
+class GraphicsDevice;
+class RenderPipeline;
+class Scene;
+class Camera;
 
 /// Application configuration
 struct PINA_API ApplicationConfig {
@@ -29,6 +34,11 @@ struct PINA_API ApplicationConfig {
     bool fullscreen = false;
     bool maximized = false;
     bool resizable = false;
+
+    // Simplified API options
+    bool autoCreateDevice = true;     // Auto-create GraphicsDevice
+    bool autoCreatePipeline = true;   // Auto-create RenderPipeline
+    Color clearColor = Color(0.1f, 0.1f, 0.12f);  // Default clear color
 };
 
 /// Base application class
@@ -64,6 +74,16 @@ public:
     UISubsystem* getUI() const;
     EventDispatcher* getEventDispatcher() const;
 
+    // ========================================================================
+    // Simplified API Accessors
+    // ========================================================================
+
+    /// Get the graphics device (auto-created if autoCreateDevice is true)
+    GraphicsDevice* getDevice();
+
+    /// Get the render pipeline (auto-created if autoCreatePipeline is true)
+    RenderPipeline* getPipeline();
+
 protected:
     /// Application configuration - set in subclass constructor
     ApplicationConfig m_config;
@@ -88,9 +108,14 @@ protected:
 
 private:
     void createSubsystems();
+    void createDeviceAndPipeline();
 
     UNIQUE<Context> m_context;
     bool m_running = false;
+
+    // Simplified API resources (auto-created if enabled)
+    UNIQUE<GraphicsDevice> m_device;
+    UNIQUE<RenderPipeline> m_pipeline;
 };
 
 } // namespace Pina

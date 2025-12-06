@@ -5,6 +5,7 @@
 
 #include "../Core/Export.h"
 #include "../Core/Memory.h"
+#include "../Graphics/Material.h"
 #include "Transform.h"
 #include <string>
 #include <vector>
@@ -15,6 +16,7 @@ namespace Pina {
 
 class Model;
 class Scene;
+class StaticMesh;
 
 /// Scene node representing an object in the scene hierarchy
 class PINA_API Node {
@@ -136,6 +138,49 @@ public:
     bool hasModel() const { return m_model != nullptr; }
 
     // ========================================================================
+    // Mesh Attachment (for simple geometry)
+    // ========================================================================
+
+    /// Attach a static mesh to this node (does NOT take ownership)
+    void setMesh(StaticMesh* mesh) { m_mesh = mesh; }
+
+    /// Get attached mesh (may be nullptr)
+    StaticMesh* getMesh() const { return m_mesh; }
+
+    /// Check if node has a mesh attached
+    bool hasMesh() const { return m_mesh != nullptr; }
+
+    // ========================================================================
+    // Material (for mesh rendering)
+    // ========================================================================
+
+    /// Set material for this node (used when rendering mesh without model)
+    void setMaterial(const Material& material) { m_material = material; m_hasMaterial = true; }
+
+    /// Get material
+    const Material& getMaterial() const { return m_material; }
+    Material& getMaterial() { return m_material; }
+
+    /// Check if node has a material set
+    bool hasMaterial() const { return m_hasMaterial; }
+
+    // ========================================================================
+    // Shadow Configuration
+    // ========================================================================
+
+    /// Set whether this node casts shadows
+    void setCastsShadow(bool casts) { m_castsShadow = casts; }
+
+    /// Check if this node casts shadows
+    bool getCastsShadow() const { return m_castsShadow; }
+
+    /// Set whether this node receives shadows
+    void setReceivesShadow(bool receives) { m_receivesShadow = receives; }
+
+    /// Check if this node receives shadows
+    bool getReceivesShadow() const { return m_receivesShadow; }
+
+    // ========================================================================
     // Scene
     // ========================================================================
 
@@ -164,8 +209,13 @@ private:
     Node* m_parent = nullptr;
     std::vector<UNIQUE<Node>> m_children;
 
-    Model* m_model = nullptr;  // Non-owning pointer
-    Scene* m_scene = nullptr;  // Owning scene
+    Model* m_model = nullptr;       // Non-owning pointer
+    StaticMesh* m_mesh = nullptr;   // Non-owning pointer (for simple geometry)
+    Material m_material;            // Material for mesh rendering
+    bool m_hasMaterial = false;     // Whether material has been set
+    bool m_castsShadow = true;      // Whether this node casts shadows
+    bool m_receivesShadow = true;   // Whether this node receives shadows
+    Scene* m_scene = nullptr;       // Owning scene
 };
 
 } // namespace Pina

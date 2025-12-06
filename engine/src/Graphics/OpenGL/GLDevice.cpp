@@ -4,6 +4,7 @@
 #include "GLShader.h"
 #include "GLBuffer.h"
 #include "GLTexture.h"
+#include "GLFramebuffer.h"
 #include <iostream>
 
 namespace Pina {
@@ -52,6 +53,10 @@ UNIQUE<Texture> GLDevice::createTexture(const unsigned char* data,
                                         uint32_t height,
                                         uint32_t channels) {
     return MAKE_UNIQUE<GLTexture>(data, width, height, channels);
+}
+
+UNIQUE<Framebuffer> GLDevice::createFramebuffer(const FramebufferSpec& spec) {
+    return MAKE_UNIQUE<GLFramebuffer>(spec);
 }
 
 // ============================================================================

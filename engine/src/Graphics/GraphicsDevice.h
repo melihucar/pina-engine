@@ -10,6 +10,7 @@
 #include "Buffer.h"
 #include "VertexLayout.h"
 #include "Texture.h"
+#include "Framebuffer.h"
 
 namespace Pina {
 
@@ -44,6 +45,10 @@ public:
                                           uint32_t width,
                                           uint32_t height,
                                           uint32_t channels) = 0;
+
+    /// Create a framebuffer (render target)
+    /// @param spec Framebuffer specification
+    virtual UNIQUE<Framebuffer> createFramebuffer(const FramebufferSpec& spec) = 0;
 
     // ========================================================================
     // Frame Lifecycle

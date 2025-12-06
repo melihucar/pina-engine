@@ -21,6 +21,7 @@ public:
                                   uint32_t width,
                                   uint32_t height,
                                   uint32_t channels) override;
+    UNIQUE<Framebuffer> createFramebuffer(const FramebufferSpec& spec) override;
 
     // Frame Lifecycle
     void beginFrame() override;

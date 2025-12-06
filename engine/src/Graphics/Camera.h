@@ -9,12 +9,15 @@
 
 namespace Pina {
 
+// Forward declaration
+class Input;
+
 /// Camera class for 3D rendering
 /// Manages view and projection matrices
 class PINA_API Camera {
 public:
     Camera();
-    ~Camera() = default;
+    virtual ~Camera() = default;
 
     // ========================================================================
     // Projection
@@ -74,6 +77,30 @@ public:
 
     /// Get camera target
     const glm::vec3& getTarget() const { return m_target; }
+
+    // ========================================================================
+    // Input Handling (for controllable cameras)
+    // ========================================================================
+
+    /// Handle input for camera movement (override in derived classes)
+    /// @param input Input system
+    /// @param deltaTime Time since last frame
+    virtual void handleInput(Input* input, float deltaTime) {
+        (void)input; (void)deltaTime;
+    }
+
+    /// Whether this camera wants to receive input
+    /// Override to return true for controllable cameras
+    virtual bool wantsInput() const { return false; }
+
+    // ========================================================================
+    // Focus Helpers
+    // ========================================================================
+
+    /// Focus on a point at a given distance
+    /// @param center Point to focus on
+    /// @param distance Distance from the point
+    void focusOn(const glm::vec3& center, float distance);
 
 private:
     void updateViewMatrix();

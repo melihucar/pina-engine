@@ -28,9 +28,9 @@ void SceneRenderer::render(Scene* scene, Shader* shader) {
 
     // Upload camera matrices
     shader->bind();
-    shader->setMat4("u_view", camera->getViewMatrix());
-    shader->setMat4("u_projection", camera->getProjectionMatrix());
-    shader->setVec3("u_viewPos", camera->getPosition());
+    shader->setMat4("uView", camera->getViewMatrix());
+    shader->setMat4("uProjection", camera->getProjectionMatrix());
+    shader->setVec3("uViewPosition", camera->getPosition());
 
     // Upload lights
     LightManager& lightManager = scene->getLightManager();
@@ -49,9 +49,9 @@ void SceneRenderer::renderNode(Node* node, Shader* shader, Camera* camera, Light
 
     // Upload camera matrices
     shader->bind();
-    shader->setMat4("u_view", camera->getViewMatrix());
-    shader->setMat4("u_projection", camera->getProjectionMatrix());
-    shader->setVec3("u_viewPos", camera->getPosition());
+    shader->setMat4("uView", camera->getViewMatrix());
+    shader->setMat4("uProjection", camera->getProjectionMatrix());
+    shader->setVec3("uViewPosition", camera->getPosition());
 
     // Upload lights if provided
     if (lightManager) {
@@ -78,8 +78,8 @@ void SceneRenderer::renderNodeRecursive(Node* node, Shader* shader, Camera* came
         glm::mat3 normalMatrix = node->getTransform().getNormalMatrix();
 
         // Upload model matrix
-        shader->setMat4("u_model", worldMatrix);
-        shader->setMat3("u_normalMatrix", normalMatrix);
+        shader->setMat4("uModel", worldMatrix);
+        shader->setMat3("uNormalMatrix", normalMatrix);
 
         // Draw the model
         model->draw(shader, lightManager);

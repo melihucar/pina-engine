@@ -59,6 +59,22 @@ void Camera::lookAt(const glm::vec3& position, const glm::vec3& target, const gl
     updateViewMatrix();
 }
 
+void Camera::focusOn(const glm::vec3& center, float distance) {
+    // Position the camera looking at the center from a distance
+    // Use the current forward direction, or default if at the center
+    glm::vec3 direction = m_position - center;
+    float currentDist = glm::length(direction);
+    if (currentDist < 0.001f) {
+        direction = glm::vec3(0.0f, 0.0f, 1.0f); // Default direction
+    } else {
+        direction = glm::normalize(direction);
+    }
+
+    m_target = center;
+    m_position = center + direction * distance;
+    updateViewMatrix();
+}
+
 void Camera::updateViewMatrix() {
     m_viewMatrix = glm::lookAt(m_position, m_target, m_up);
 }

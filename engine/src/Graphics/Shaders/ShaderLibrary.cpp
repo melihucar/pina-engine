@@ -190,7 +190,7 @@ uniform bool uUseDiffuseMap;
 uniform bool uUseSpecularMap;
 uniform bool uUseNormalMap;
 uniform bool uWireframe;
-uniform int u_shadingMode;  // 0=smooth, 1=flat, 2=wireframe
+uniform int uShadingMode;  // 0=smooth, 1=flat, 2=wireframe
 
 // ============================================================================
 // Inputs from vertex shader
@@ -267,14 +267,14 @@ vec3 calculateLight(Light light, vec3 normal, vec3 viewDir, vec3 fragPos,
 
 void main() {
     // Wireframe mode: output solid white
-    if (uWireframe || u_shadingMode == 2) {
+    if (uWireframe || uShadingMode == 2) {
         FragColor = vec4(1.0, 1.0, 1.0, 1.0);
         return;
     }
 
     // Get normal based on shading mode
     vec3 normal;
-    if (u_shadingMode == 1) {
+    if (uShadingMode == 1) {
         // Flat shading: calculate from screen-space derivatives
         vec3 dFdxPos = dFdx(vWorldPos);
         vec3 dFdyPos = dFdy(vWorldPos);
