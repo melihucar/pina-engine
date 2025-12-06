@@ -1,6 +1,7 @@
 /// Pina Engine - Light Manager Implementation
 
 #include "LightManager.h"
+#include "../OpenGL/GLCommon.h"
 
 namespace Pina {
 
@@ -292,6 +293,37 @@ void LightManager::uploadPBRMaterial(Shader* shader, const Material& material) c
     } else {
         shader->setInt("uUseEmissionMap", 0);
     }
+}
+
+// ========================================================================
+// Shadow Mapping Support
+// ========================================================================
+
+DirectionalLight* LightManager::getShadowCastingLight() const {
+    for (int i = 0; i < MAX_LIGHTS; ++i) {
+        if (m_lights[i] && m_lights[i]->isEnabled() &&
+            m_lights[i]->getType() == LightType::Directional) {
+            auto* dirLight = static_cast<DirectionalLight*>(m_lights[i]);
+            if (dirLight->getCastsShadow()) {
+                return dirLight;
+            }
+        }
+    }
+    return nullptr;
+}
+
+void LightManager::uploadShadowUniforms(Shader* shader, uint32_t shadowMapTextureID) const {
+    if (!shader) return;
+
+    // Upload light space matrix
+    shader->setMat4("uLightSpaceMatrix", m_lightSpaceMatrix);
+
+    // Shadow map is bound to texture unit 8 (after material textures 0-7)
+    shader->setInt("uShadowMap", 8);
+
+    // Bind the shadow map texture
+    glActiveTexture(GL_TEXTURE8);
+    glBindTexture(GL_TEXTURE_2D, shadowMapTextureID);
 }
 
 } // namespace Pina

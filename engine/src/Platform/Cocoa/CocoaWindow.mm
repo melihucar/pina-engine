@@ -141,9 +141,10 @@ bool CocoaWindow::create(const WindowConfig& config) {
             [m_window zoom:nil];
         }
 
-        // Store dimensions
-        m_width = config.width;
-        m_height = config.height;
+        // Store dimensions (use backing size for Retina displays)
+        NSRect backingBounds = [m_view convertRectToBacking:[m_view bounds]];
+        m_width = (int)backingBounds.size.width;
+        m_height = (int)backingBounds.size.height;
 
         // Finish launching
         [NSApp finishLaunching];

@@ -9,6 +9,7 @@
 #include "../Shader.h"
 #include "../Camera.h"
 #include "../Lighting/LightManager.h"
+#include "../Lighting/DirectionalLight.h"
 #include "../../Scene/Scene.h"
 #include "../../Scene/SceneRenderer.h"
 
@@ -55,16 +56,30 @@ public:
             ctx.lights->uploadToShader(shader);
         }
 
-        // Upload shadow map if enabled
-        if (enableShadows && !shadowMapInput.empty()) {
+        // Upload shadow map and uniforms if enabled
+        if (enableShadows && !shadowMapInput.empty() && ctx.lights) {
             uint32_t shadowMapID = ctx.getDepthTextureID(shadowMapInput);
             if (shadowMapID != 0) {
-                // Bind shadow map to texture unit 8 (arbitrary choice)
-                // The shader should sample from this
-                shader->setInt("uShadowMap", 8);
-                // Note: actual binding would need OpenGL calls
-                // This is a simplified version
+                // Upload light space matrix and bind shadow map
+                ctx.lights->uploadShadowUniforms(shader, shadowMapID);
+                shader->setInt("uEnableShadows", 1);
+
+                // Upload shadow parameters from light
+                DirectionalLight* shadowLight = ctx.lights->getShadowCastingLight();
+                if (shadowLight) {
+                    shader->setFloat("uShadowBias", shadowLight->getShadowBias());
+                    shader->setFloat("uShadowNormalBias", shadowLight->getShadowNormalBias());
+                    shader->setFloat("uShadowSoftness", shadowLight->getShadowSoftness());
+                } else {
+                    shader->setFloat("uShadowBias", 0.005f);
+                    shader->setFloat("uShadowNormalBias", 0.02f);
+                    shader->setFloat("uShadowSoftness", 1.5f);
+                }
+            } else {
+                shader->setInt("uEnableShadows", 0);
             }
+        } else {
+            shader->setInt("uEnableShadows", 0);
         }
 
         // Set wireframe mode

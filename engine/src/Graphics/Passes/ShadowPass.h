@@ -8,9 +8,14 @@
 #include "../Framebuffer.h"
 #include "../Shader.h"
 #include "../../Core/Memory.h"
+#include "../../Scene/Scene.h"
+#include "../../Scene/Node.h"
+#include "../Model.h"
+#include "../Lighting/DirectionalLight.h"
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <iostream>
+#include <cmath>
 
 namespace Pina {
 
@@ -64,16 +69,18 @@ public:
         shader->bind();
 
         // Calculate light space matrix for directional light
-        // For now, we support one directional light for shadows
         glm::mat4 lightSpaceMatrix = calculateLightSpaceMatrix(ctx);
         shader->setMat4("uLightSpaceMatrix", lightSpaceMatrix);
 
         // Store light space matrix for scene pass to use
         m_lightSpaceMatrix = lightSpaceMatrix;
 
+        // Also store in LightManager so ScenePass can access it
+        if (ctx.lights) {
+            ctx.lights->setLightSpaceMatrix(m_lightSpaceMatrix);
+        }
+
         // Render scene from light's perspective
-        // Note: This is simplified - a full implementation would iterate
-        // through nodes and render their geometry with just depth
         renderSceneDepth(ctx, shader);
 
         // Unbind
@@ -117,44 +124,91 @@ public:
 
 private:
     glm::mat4 calculateLightSpaceMatrix(RenderContext& ctx) {
-        // Get the first directional light
-        // In a full implementation, you might want to handle multiple lights
+        // Get the first shadow-casting directional light
         glm::vec3 lightDir = glm::vec3(-0.5f, -1.0f, -0.3f); // Default
+        float currentOrthoSize = orthoSize;
+        float currentNearPlane = nearPlane;
+        float currentFarPlane = farPlane;
 
-        // Try to get direction from scene's light manager
-        // This is simplified - would need proper light iteration
-        if (ctx.lights && ctx.lights->getLightCount() > 0) {
-            // Use first light's direction if available
-            // Note: This assumes directional light at index 0
+        // Try to get direction and settings from shadow-casting directional light
+        if (ctx.lights) {
+            DirectionalLight* shadowLight = ctx.lights->getShadowCastingLight();
+            if (shadowLight) {
+                Vector3 dir = shadowLight->getDirection();
+                lightDir = glm::vec3(dir.x, dir.y, dir.z);
+
+                // Use light's shadow configuration
+                currentOrthoSize = shadowLight->getShadowOrthoSize();
+                currentNearPlane = shadowLight->getShadowNearPlane();
+                currentFarPlane = shadowLight->getShadowFarPlane();
+            }
         }
 
         lightDir = glm::normalize(lightDir);
 
+        // Position light far away in opposite direction
+        glm::vec3 lightPos = -lightDir * (currentFarPlane * 0.5f);
+
+        // Determine up vector (avoid parallel to lightDir)
+        glm::vec3 up = glm::vec3(0.0f, 1.0f, 0.0f);
+        if (std::abs(glm::dot(lightDir, up)) > 0.99f) {
+            up = glm::vec3(1.0f, 0.0f, 0.0f);
+        }
+
         // Light view matrix
-        glm::vec3 lightPos = -lightDir * (farPlane * 0.5f); // Position light far away
-        glm::mat4 lightView = glm::lookAt(lightPos, glm::vec3(0.0f), glm::vec3(0.0f, 1.0f, 0.0f));
+        glm::mat4 lightView = glm::lookAt(lightPos, glm::vec3(0.0f), up);
 
         // Orthographic projection for directional light
         glm::mat4 lightProjection = glm::ortho(
-            -orthoSize, orthoSize,
-            -orthoSize, orthoSize,
-            nearPlane, farPlane
+            -currentOrthoSize, currentOrthoSize,
+            -currentOrthoSize, currentOrthoSize,
+            currentNearPlane, currentFarPlane
         );
 
         return lightProjection * lightView;
     }
 
     void renderSceneDepth(RenderContext& ctx, Shader* shader) {
-        // Simplified depth-only rendering
-        // A full implementation would:
-        // 1. Iterate through all nodes in the scene
-        // 2. Check if node casts shadows
-        // 3. Render geometry with only depth (no color)
+        if (!ctx.scene) return;
 
-        // For now, we rely on SceneRenderer or similar
-        // This is a placeholder that would need integration with scene graph
-        (void)ctx;
-        (void)shader;
+        Node* root = ctx.scene->getRoot();
+        if (!root) return;
+
+        renderNodeDepthRecursive(root, shader);
+    }
+
+    void renderNodeDepthRecursive(Node* node, Shader* shader) {
+        if (!node || !node->isEnabled()) return;
+
+        // Only render nodes that cast shadows
+        if (node->getCastsShadow()) {
+            // Render model if present
+            if (node->hasModel()) {
+                Model* model = node->getModel();
+                const glm::mat4& worldMatrix = node->getTransform().getWorldMatrix();
+                shader->setMat4("uModel", worldMatrix);
+
+                // Draw all meshes (depth only, no material needed)
+                for (size_t i = 0; i < model->getMeshCount(); ++i) {
+                    StaticMesh* mesh = model->getMesh(i);
+                    if (mesh) {
+                        mesh->draw();
+                    }
+                }
+            }
+
+            // Render static mesh if present
+            if (node->hasMesh()) {
+                const glm::mat4& worldMatrix = node->getTransform().getWorldMatrix();
+                shader->setMat4("uModel", worldMatrix);
+                node->getMesh()->draw();
+            }
+        }
+
+        // Recursively process children
+        for (size_t i = 0; i < node->getChildCount(); ++i) {
+            renderNodeDepthRecursive(node->getChild(i), shader);
+        }
     }
 
     static const char* getShadowVertexShader() {

@@ -99,6 +99,23 @@ public:
     /// Call this if you modify lights after adding them
     void update();
 
+    // ========================================================================
+    // Shadow Mapping Support
+    // ========================================================================
+
+    /// Set the light space matrix (computed by ShadowPass)
+    void setLightSpaceMatrix(const glm::mat4& matrix) { m_lightSpaceMatrix = matrix; }
+    const glm::mat4& getLightSpaceMatrix() const { return m_lightSpaceMatrix; }
+
+    /// Upload shadow-related uniforms to a shader
+    /// @param shader Shader to upload uniforms to
+    /// @param shadowMapTextureID OpenGL texture ID for shadow map
+    void uploadShadowUniforms(Shader* shader, uint32_t shadowMapTextureID) const;
+
+    /// Get the first directional light that casts shadows
+    /// @return Pointer to shadow-casting directional light, or nullptr if none
+    DirectionalLight* getShadowCastingLight() const;
+
 private:
     void updateLightData(int index);
 
@@ -108,6 +125,9 @@ private:
 
     glm::vec3 m_viewPosition = glm::vec3(0.0f);
     Color m_globalAmbient = Color(0.03f, 0.03f, 0.03f, 1.0f);
+
+    // Shadow mapping
+    glm::mat4 m_lightSpaceMatrix = glm::mat4(1.0f);
 };
 
 } // namespace Pina

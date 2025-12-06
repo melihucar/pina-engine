@@ -70,8 +70,11 @@ protected:
         // Setup lights
         setupLights();
 
-        // Create scene renderer
-        m_renderer = Pina::MAKE_UNIQUE<Pina::SceneRenderer>(getDevice());
+        // Create render pipeline (handles shadows, post-processing)
+        m_pipeline = Pina::MAKE_UNIQUE<Pina::RenderPipeline>(getDevice());
+        m_pipeline->setClearColor(m_config.clearColor);
+        m_pipeline->setShadowsEnabled(m_shadowsEnabled);
+        m_pipeline->setPBREnabled(m_usePBR);
 
         std::cout << "=== Model Sample ===" << std::endl;
         std::cout << "Controls:" << std::endl;
@@ -156,6 +159,9 @@ protected:
         m_sunLight.setColor(Pina::Color(1.0f, 0.98f, 0.95f));
         m_sunLight.setIntensity(1.2f);
         m_sunLight.setAmbient(Pina::Color(0.2f, 0.2f, 0.22f));
+        m_sunLight.setCastsShadow(true);
+        m_sunLight.setShadowBias(m_shadowBias);
+        m_sunLight.setShadowNormalBias(m_shadowNormalBias);
 
         // Front fill light - illuminates the front of the model
         m_pointLight.setPosition(Pina::Vector3(3.0f, 3.0f, 5.0f));
@@ -185,6 +191,8 @@ protected:
     }
 
     void onUpdate(float deltaTime) override {
+        m_lastDeltaTime = deltaTime;
+
         // Update FPS counter
         m_fpsAccumulator += deltaTime;
         m_frameCount++;
@@ -254,100 +262,18 @@ protected:
     }
 
     void onRender() override {
-        getDevice()->beginFrame();
-        getDevice()->clear(
-            m_config.clearColor.r,
-            m_config.clearColor.g,
-            m_config.clearColor.b
-        );
+        // Update pipeline settings
+        m_pipeline->setShadowsEnabled(m_shadowsEnabled);
+        m_pipeline->setPBREnabled(m_usePBR);
+        m_pipeline->setWireframe(m_wireframe);
 
-        // Select shader based on material type
-        Pina::Shader* activeShader = m_usePBR ? m_pbrShader.get() : m_shader.get();
+        // Update shadow parameters on the sun light
+        m_sunLight.setShadowSoftness(m_shadowSoftness);
+        m_sunLight.setShadowBias(m_shadowBias);
+        m_sunLight.setShadowNormalBias(m_shadowNormalBias);
 
-        // Apply wireframe mode if enabled
-        getDevice()->setWireframe(m_wireframe);
-        m_renderer->setWireframe(m_wireframe);
-
-        // Render scene - but we need special handling for models with transparency
-        // For now, render light markers with standard renderer
-        activeShader->bind();
-        auto* camera = m_scene.getActiveCamera();
-        if (camera) {
-            activeShader->setMat4("uView", camera->getViewMatrix());
-            activeShader->setMat4("uProjection", camera->getProjectionMatrix());
-        }
-
-        m_scene.getLightManager().setViewPosition(camera->getPosition());
-        m_scene.getLightManager().uploadToShader(activeShader);
-
-        if (m_usePBR) {
-            activeShader->setInt("uShadingMode", m_wireframe ? 2 : 0);
-        } else {
-            activeShader->setInt("uWireframe", m_wireframe ? 1 : 0);
-        }
-
-        // Draw model with two-pass rendering for correct transparency
-        if (m_modelNode && m_modelNode->getModel()) {
-            auto* model = m_modelNode->getModel();
-            glm::mat4 modelMatrix = m_modelNode->getTransform().getWorldMatrix();
-            glm::mat3 normalMatrix = glm::transpose(glm::inverse(glm::mat3(modelMatrix)));
-            activeShader->setMat4("uModel", modelMatrix);
-            activeShader->setMat3("uNormalMatrix", normalMatrix);
-
-            // Pass 1: Draw opaque meshes
-            model->drawOpaque(activeShader, &m_scene.getLightManager());
-
-            // Pass 2: Draw transparent meshes
-            if (model->hasTransparentMaterials()) {
-                getDevice()->setBlending(true);
-                getDevice()->setDepthWrite(false);
-                model->drawTransparent(activeShader, &m_scene.getLightManager());
-                getDevice()->setDepthWrite(true);
-                getDevice()->setBlending(false);
-            }
-        } else if (m_modelNode && m_modelNode->hasMesh()) {
-            // Fallback cube
-            glm::mat4 modelMatrix = m_modelNode->getTransform().getWorldMatrix();
-            glm::mat3 normalMatrix = glm::transpose(glm::inverse(glm::mat3(modelMatrix)));
-            activeShader->setMat4("uModel", modelMatrix);
-            activeShader->setMat3("uNormalMatrix", normalMatrix);
-            m_scene.getLightManager().uploadMaterial(activeShader, m_modelNode->getMaterial());
-            m_modelNode->getMesh()->draw();
-        }
-
-        // Draw light markers (use standard shader)
-        m_shader->bind();
-        m_shader->setMat4("uView", camera->getViewMatrix());
-        m_shader->setMat4("uProjection", camera->getProjectionMatrix());
-        m_shader->setInt("uWireframe", 0);
-        m_scene.getLightManager().uploadToShader(m_shader.get());
-
-        // Front light marker
-        {
-            glm::mat4 model = m_frontLightMarker->getTransform().getWorldMatrix();
-            m_shader->setMat4("uModel", model);
-            m_shader->setMat3("uNormalMatrix", glm::mat3(1.0f));
-            m_scene.getLightManager().uploadMaterial(m_shader.get(), m_frontLightMarker->getMaterial());
-            if (m_frontLightMarker->hasMesh()) {
-                m_frontLightMarker->getMesh()->draw();
-            }
-        }
-
-        // Back light marker
-        {
-            glm::mat4 model = m_backLightMarker->getTransform().getWorldMatrix();
-            m_shader->setMat4("uModel", model);
-            m_shader->setMat3("uNormalMatrix", glm::mat3(1.0f));
-            m_scene.getLightManager().uploadMaterial(m_shader.get(), m_backLightMarker->getMaterial());
-            if (m_backLightMarker->hasMesh()) {
-                m_backLightMarker->getMesh()->draw();
-            }
-        }
-
-        // Reset to solid mode for UI rendering
-        getDevice()->setWireframe(false);
-
-        getDevice()->endFrame();
+        // Render scene using pipeline (handles shadows, transparency, post-processing)
+        m_pipeline->render(&m_scene, m_scene.getActiveCamera(), m_lastDeltaTime);
     }
 
     void onRenderUI() override {
@@ -472,6 +398,18 @@ protected:
                 Checkbox("[Space] Auto-Rotate", &m_autoRotate);
                 Checkbox("[Z] Wireframe", &m_wireframe);
             }
+
+            Separator();
+
+            // Shadows
+            if (CollapsingHeader header("Shadows", Pina::UITreeNodeFlags::DefaultOpen); header) {
+                Checkbox("Enable Shadows", &m_shadowsEnabled);
+                if (m_shadowsEnabled) {
+                    SliderFloat("Shadow Softness", &m_shadowSoftness, 0.5f, 4.0f, "%.1f");
+                    SliderFloat("Shadow Bias", &m_shadowBias, 0.0001f, 0.01f, "%.4f");
+                    SliderFloat("Normal Bias", &m_shadowNormalBias, 0.001f, 0.1f, "%.3f");
+                }
+            }
         }
     }
 
@@ -480,12 +418,15 @@ protected:
         if (auto* camera = m_scene.getActiveCamera()) {
             camera->setAspectRatio(static_cast<float>(width) / static_cast<float>(height));
         }
+        if (m_pipeline) {
+            m_pipeline->resize(width, height);
+        }
     }
 
     void onShutdown() override {
         m_orbitCamera.reset();
         m_freelookCamera.reset();
-        m_renderer.reset();
+        m_pipeline.reset();
         m_shader.reset();
         m_pbrShader.reset();
     }
@@ -494,7 +435,7 @@ private:
     Pina::Scene m_scene;
     Pina::UNIQUE<Pina::Shader> m_shader;
     Pina::UNIQUE<Pina::Shader> m_pbrShader;
-    Pina::UNIQUE<Pina::SceneRenderer> m_renderer;
+    Pina::UNIQUE<Pina::RenderPipeline> m_pipeline;
 
     // Scene nodes
     Pina::Node* m_modelNode = nullptr;
@@ -521,6 +462,10 @@ private:
     // Rendering modes
     bool m_wireframe = false;
     bool m_usePBR = false;
+    bool m_shadowsEnabled = true;
+    float m_shadowSoftness = 1.5f;
+    float m_shadowBias = 0.005f;
+    float m_shadowNormalBias = 0.02f;
 
     // Model selection
     ModelType m_selectedModel = ModelType::Winter;
@@ -529,6 +474,7 @@ private:
     float m_fps = 0.0f;
     float m_fpsAccumulator = 0.0f;
     int m_frameCount = 0;
+    float m_lastDeltaTime = 0.0f;
 
     // Model transform controls
     glm::vec3 m_modelPosition{0.0f};

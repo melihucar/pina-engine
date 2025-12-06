@@ -119,10 +119,14 @@ uniform mat4 uView;
 uniform mat4 uProjection;
 uniform mat3 uNormalMatrix;  // transpose(inverse(mat3(uModel)))
 
+// Shadow mapping
+uniform mat4 uLightSpaceMatrix;
+
 // Output to fragment shader
 out vec3 vWorldPos;
 out vec3 vNormal;
 out vec2 vTexCoord;
+out vec4 vLightSpacePos;
 
 void main() {
     // Transform vertex to world space
@@ -134,6 +138,9 @@ void main() {
 
     // Pass through texture coordinates
     vTexCoord = aTexCoord;
+
+    // Calculate position in light space for shadow mapping
+    vLightSpacePos = uLightSpaceMatrix * worldPos;
 
     // Transform to clip space
     gl_Position = uProjection * uView * worldPos;
@@ -192,6 +199,13 @@ uniform bool uUseNormalMap;
 uniform bool uWireframe;
 uniform int uShadingMode;  // 0=smooth, 1=flat, 2=wireframe
 
+// Shadow mapping
+uniform sampler2D uShadowMap;
+uniform bool uEnableShadows;
+uniform float uShadowBias;
+uniform float uShadowNormalBias;
+uniform float uShadowSoftness;
+
 // ============================================================================
 // Inputs from vertex shader
 // ============================================================================
@@ -199,6 +213,7 @@ uniform int uShadingMode;  // 0=smooth, 1=flat, 2=wireframe
 in vec3 vWorldPos;
 in vec3 vNormal;
 in vec2 vTexCoord;
+in vec4 vLightSpacePos;
 
 // ============================================================================
 // Output
@@ -221,8 +236,50 @@ float calculateSpotIntensity(vec3 lightDir, vec3 spotDir, vec4 cutoff) {
     return clamp((theta - cutoff.y) / epsilon, 0.0, 1.0);
 }
 
+// 16-sample Poisson disk for natural shadow sampling
+const vec2 poissonDisk[16] = vec2[](
+    vec2(-0.94201624, -0.39906216), vec2(0.94558609, -0.76890725),
+    vec2(-0.094184101, -0.92938870), vec2(0.34495938, 0.29387760),
+    vec2(-0.91588581, 0.45771432), vec2(-0.81544232, -0.87912464),
+    vec2(-0.38277543, 0.27676845), vec2(0.97484398, 0.75648379),
+    vec2(0.44323325, -0.97511554), vec2(0.53742981, -0.47373420),
+    vec2(-0.26496911, -0.41893023), vec2(0.79197514, 0.19090188),
+    vec2(-0.24188840, 0.99706507), vec2(-0.81409955, 0.91437590),
+    vec2(0.19984126, 0.78641367), vec2(0.14383161, -0.14100790)
+);
+
+// Shadow calculation with Poisson disk sampling for soft shadows
+float ShadowCalculation(vec4 fragPosLightSpace, vec3 normal, vec3 lightDir) {
+    // Perspective divide
+    vec3 projCoords = fragPosLightSpace.xyz / fragPosLightSpace.w;
+
+    // Transform to [0,1] range
+    projCoords = projCoords * 0.5 + 0.5;
+
+    // Keep fragments outside the far plane lit
+    if (projCoords.z > 1.0) {
+        return 0.0;
+    }
+
+    float currentDepth = projCoords.z;
+
+    // Dynamic bias based on surface angle to light
+    float bias = max(uShadowBias * (1.0 - dot(normal, lightDir)), uShadowBias * 0.1);
+
+    // Poisson disk sampling with softness control
+    float shadow = 0.0;
+    vec2 texelSize = 1.0 / textureSize(uShadowMap, 0);
+    float radius = uShadowSoftness * 3.0;  // Base radius scaled by softness
+
+    for (int i = 0; i < 16; i++) {
+        float pcfDepth = texture(uShadowMap, projCoords.xy + poissonDisk[i] * texelSize * radius).r;
+        shadow += currentDepth - bias > pcfDepth ? 1.0 : 0.0;
+    }
+    return shadow / 16.0;
+}
+
 vec3 calculateLight(Light light, vec3 normal, vec3 viewDir, vec3 fragPos,
-                    vec3 diffuseColor, vec3 specularColor) {
+                    vec3 diffuseColor, vec3 specularColor, float shadow) {
     if (light.direction.w < 0.5) {
         return vec3(0.0);
     }
@@ -258,7 +315,8 @@ vec3 calculateLight(Light light, vec3 normal, vec3 viewDir, vec3 fragPos,
     float spec = pow(max(dot(normal, halfwayDir), 0.0), uMaterial.shininess);
     vec3 specular = spec * light.color.rgb * specularColor;
 
-    return ambient + (diffuse + specular) * attenuation * spotIntensity;
+    // Apply shadow to diffuse and specular (ambient is unaffected by shadows)
+    return ambient + (diffuse + specular) * attenuation * spotIntensity * (1.0 - shadow);
 }
 
 // ============================================================================
@@ -308,10 +366,22 @@ void main() {
     // Add emissive (self-illumination)
     result += uMaterial.emissive;
 
+    // Calculate shadow for first directional light
+    float shadow = 0.0;
+    if (uEnableShadows && uLightCount > 0) {
+        // Check if first light is directional (position.w < 0.5)
+        if (uLights[0].position.w < 0.5 && uLights[0].direction.w > 0.5) {
+            vec3 lightDir = normalize(-uLights[0].direction.xyz);
+            shadow = ShadowCalculation(vLightSpacePos, normal, lightDir);
+        }
+    }
+
     // Accumulate contribution from all lights
     for (int i = 0; i < uLightCount && i < MAX_LIGHTS; ++i) {
+        // Apply shadow only to first directional light
+        float lightShadow = (i == 0 && uLights[0].position.w < 0.5) ? shadow : 0.0;
         result += calculateLight(uLights[i], normal, viewDir, vWorldPos,
-                                 diffuseColor, specularColor);
+                                 diffuseColor, specularColor, lightShadow);
     }
 
     // Final color output with alpha from diffuse texture
@@ -377,16 +447,21 @@ uniform mat4 uView;
 uniform mat4 uProjection;
 uniform mat3 uNormalMatrix;
 
+// Shadow mapping
+uniform mat4 uLightSpaceMatrix;
+
 // Output to fragment shader
 out vec3 vWorldPos;
 out vec3 vNormal;
 out vec2 vTexCoord;
+out vec4 vLightSpacePos;
 
 void main() {
     vec4 worldPos = uModel * vec4(aPosition, 1.0);
     vWorldPos = worldPos.xyz;
     vNormal = uNormalMatrix * aNormal;
     vTexCoord = aTexCoord;
+    vLightSpacePos = uLightSpaceMatrix * worldPos;
     gl_Position = uProjection * uView * worldPos;
 }
 )";
@@ -460,6 +535,13 @@ uniform bool uUseEmissionMap;
 uniform bool uWireframe;
 uniform int uShadingMode;  // 0=smooth, 1=flat, 2=wireframe
 
+// Shadow mapping
+uniform sampler2D uShadowMap;
+uniform bool uEnableShadows;
+uniform float uShadowBias;
+uniform float uShadowNormalBias;
+uniform float uShadowSoftness;
+
 // ============================================================================
 // Inputs from vertex shader
 // ============================================================================
@@ -467,12 +549,52 @@ uniform int uShadingMode;  // 0=smooth, 1=flat, 2=wireframe
 in vec3 vWorldPos;
 in vec3 vNormal;
 in vec2 vTexCoord;
+in vec4 vLightSpacePos;
 
 // ============================================================================
 // Output
 // ============================================================================
 
 out vec4 FragColor;
+
+// ============================================================================
+// Shadow Calculation
+// ============================================================================
+
+// 16-sample Poisson disk for natural shadow sampling
+const vec2 poissonDiskPBR[16] = vec2[](
+    vec2(-0.94201624, -0.39906216), vec2(0.94558609, -0.76890725),
+    vec2(-0.094184101, -0.92938870), vec2(0.34495938, 0.29387760),
+    vec2(-0.91588581, 0.45771432), vec2(-0.81544232, -0.87912464),
+    vec2(-0.38277543, 0.27676845), vec2(0.97484398, 0.75648379),
+    vec2(0.44323325, -0.97511554), vec2(0.53742981, -0.47373420),
+    vec2(-0.26496911, -0.41893023), vec2(0.79197514, 0.19090188),
+    vec2(-0.24188840, 0.99706507), vec2(-0.81409955, 0.91437590),
+    vec2(0.19984126, 0.78641367), vec2(0.14383161, -0.14100790)
+);
+
+float ShadowCalculation(vec4 fragPosLightSpace, vec3 normal, vec3 lightDir) {
+    vec3 projCoords = fragPosLightSpace.xyz / fragPosLightSpace.w;
+    projCoords = projCoords * 0.5 + 0.5;
+
+    if (projCoords.z > 1.0) {
+        return 0.0;
+    }
+
+    float currentDepth = projCoords.z;
+    float bias = max(uShadowBias * (1.0 - dot(normal, lightDir)), uShadowBias * 0.1);
+
+    // Poisson disk sampling with softness control
+    float shadow = 0.0;
+    vec2 texelSize = 1.0 / textureSize(uShadowMap, 0);
+    float radius = uShadowSoftness * 3.0;  // Base radius scaled by softness
+
+    for (int i = 0; i < 16; i++) {
+        float pcfDepth = texture(uShadowMap, projCoords.xy + poissonDiskPBR[i] * texelSize * radius).r;
+        shadow += currentDepth - bias > pcfDepth ? 1.0 : 0.0;
+    }
+    return shadow / 16.0;
+}
 
 // ============================================================================
 // PBR Functions (Cook-Torrance BRDF)
@@ -533,7 +655,7 @@ float calculateSpotIntensity(vec3 lightDir, vec3 spotDir, vec4 cutoff) {
 
 // Calculate PBR lighting for a single light
 vec3 calculatePBRLight(Light light, vec3 N, vec3 V, vec3 fragPos,
-                       vec3 albedo, float metallic, float roughness, vec3 F0) {
+                       vec3 albedo, float metallic, float roughness, vec3 F0, float shadow) {
     if (light.direction.w < 0.5) {
         return vec3(0.0);
     }
@@ -582,7 +704,8 @@ vec3 calculatePBRLight(Light light, vec3 N, vec3 V, vec3 fragPos,
     // Lambert diffuse
     float NdotL = max(dot(N, L), 0.0);
 
-    return (kD * albedo / PI + specular) * radiance * NdotL;
+    // Apply shadow to entire light contribution (diffuse + specular)
+    return (kD * albedo / PI + specular) * radiance * NdotL * (1.0 - shadow);
 }
 
 // ============================================================================
@@ -645,13 +768,24 @@ void main() {
     vec3 F0 = vec3(0.04); // Default for dielectrics
     F0 = mix(F0, albedo, metallic);
 
+    // Calculate shadow for first directional light
+    float shadow = 0.0;
+    if (uEnableShadows && uLightCount > 0) {
+        if (uLights[0].position.w < 0.5 && uLights[0].direction.w > 0.5) {
+            vec3 lightDir = normalize(-uLights[0].direction.xyz);
+            shadow = ShadowCalculation(vLightSpacePos, N, lightDir);
+        }
+    }
+
     // Accumulate lighting
     vec3 Lo = vec3(0.0);
     for (int i = 0; i < uLightCount && i < MAX_LIGHTS; ++i) {
-        Lo += calculatePBRLight(uLights[i], N, V, vWorldPos, albedo, metallic, roughness, F0);
+        // Apply shadow only to first directional light
+        float lightShadow = (i == 0 && uLights[0].position.w < 0.5) ? shadow : 0.0;
+        Lo += calculatePBRLight(uLights[i], N, V, vWorldPos, albedo, metallic, roughness, F0, lightShadow);
     }
 
-    // Ambient lighting (simplified IBL approximation)
+    // Ambient lighting (simplified IBL approximation) - unaffected by shadows
     vec3 ambient = uGlobalAmbient * albedo * ao;
 
     // Emission (glTF: emissive = texture * factor, or just factor if no texture)
